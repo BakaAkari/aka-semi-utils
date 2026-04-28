@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QWidget, QPushButton, QGridLayout, QLabel, QFileDialog,
-    QMenu, QApplication, QVBoxLayout
+    QMenu, QApplication, QVBoxLayout, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QFont, QAction
@@ -83,16 +83,20 @@ class ThumbContainer(QWidget):
         self._setup_ui()
     
     def _setup_ui(self):
-        self.setMinimumHeight(180)
+        self.setMinimumHeight(120)
+        self.setMaximumHeight(160)
         self.setAcceptDrops(True)
         
-        # 主布局
+        # 主布局 - 无外边距，按钮撑满
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(8, 8, 8, 8)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
         
-        # 空状态：选择按钮
+        # 空状态：选择按钮（撑满）
         self.empty_btn = QPushButton("选择图片文件")
-        self.empty_btn.setMinimumHeight(160)
+        self.empty_btn.setMinimumHeight(100)
+        self.empty_btn.setMaximumHeight(140)
+        self.empty_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.empty_btn.setStyleSheet("""
             QPushButton {
                 border: 2px dashed #666666;

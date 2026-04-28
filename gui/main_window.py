@@ -101,8 +101,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("极简水印")
-        self.setMinimumSize(450, 650)
-        self.resize(500, 720)
+        self.setMinimumSize(450, 550)
+        self.resize(500, 600)
         
         # 项目根目录
         self.project_root = Path(__file__).parent.parent
