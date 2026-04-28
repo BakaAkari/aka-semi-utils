@@ -66,7 +66,7 @@ class CollapsibleConfigPanel(QFrame):
         
         # 三大 Tab
         self.tabs = QTabWidget()
-        self.tabs.setMaximumHeight(400)
+        self.tabs.setMaximumHeight(600)
         
         self.config_panel = ConfigPanel(self.state)
         self.tabs.addTab(self.config_panel, "水印配置")

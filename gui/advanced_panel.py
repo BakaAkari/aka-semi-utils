@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QSlider,
     QComboBox, QCheckBox, QLineEdit, QDoubleSpinBox, QPushButton,
-    QColorDialog, QFrame
+    QColorDialog, QFrame, QScrollArea
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
@@ -79,7 +79,7 @@ class CollapsibleGroup(QFrame):
 
 
 class AdvancedPanel(QWidget):
-    """高级设置面板。"""
+    """高级设置面板 — 内部可滚动。"""
 
     def __init__(self, state: AppState, parent=None):
         super().__init__(parent)
@@ -90,49 +90,64 @@ class AdvancedPanel(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(0)
+        
+        # 滚动区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+        
+        # 内容面板
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(8)
 
         # 分组: 字体与颜色
         font_group = CollapsibleGroup("字体与颜色")
         self._setup_font_group(font_group)
-        layout.addWidget(font_group)
+        content_layout.addWidget(font_group)
 
         # 分组 1: 边框/留白
         margin_group = CollapsibleGroup("边框/留白")
         self._setup_margin_group(margin_group)
-        layout.addWidget(margin_group)
+        content_layout.addWidget(margin_group)
 
         # 分组 2: 圆角与阴影
         corner_group = CollapsibleGroup("圆角与阴影")
         self._setup_corner_group(corner_group)
-        layout.addWidget(corner_group)
+        content_layout.addWidget(corner_group)
 
         # 分组 3: 图像质量
         quality_group = CollapsibleGroup("图像质量")
         self._setup_quality_group(quality_group)
-        layout.addWidget(quality_group)
+        content_layout.addWidget(quality_group)
 
         # 分组 4: 背景效果
         blur_group = CollapsibleGroup("背景效果")
         self._setup_blur_group(blur_group)
-        layout.addWidget(blur_group)
+        content_layout.addWidget(blur_group)
 
         # 分组 5: 拼接与对齐
         concat_group = CollapsibleGroup("拼接与对齐")
         self._setup_concat_group(concat_group)
-        layout.addWidget(concat_group)
+        content_layout.addWidget(concat_group)
 
         # 分组 6: 图像调整
         resize_group = CollapsibleGroup("图像调整")
         self._setup_resize_group(resize_group)
-        layout.addWidget(resize_group)
+        content_layout.addWidget(resize_group)
 
-        # 分组 6: 签名(实验性)
+        # 分组 7: 签名(实验性)
         sig_group = CollapsibleGroup("签名(实验性)")
         self._setup_signature_group(sig_group)
-        layout.addWidget(sig_group)
+        content_layout.addWidget(sig_group)
 
-        layout.addStretch()
+        content_layout.addStretch()
+        
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
 
     def _setup_font_group(self, group: CollapsibleGroup):
         """字体与颜色设置。"""
