@@ -87,7 +87,7 @@ class CornerEditor(QWidget):
             "相机型号", "镜头型号", "拍摄参数", "拍摄日期",
             "厂商品牌", "地理位置", "自定义文本", "空"
         ])
-        combo.setFixedWidth(100)
+        combo.setFixedWidth(105)
         if field_value:
             idx = combo.findText(field_value)
             if idx >= 0:
