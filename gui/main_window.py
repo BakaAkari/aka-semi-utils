@@ -161,6 +161,7 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setFixedHeight(28)
         progress_row.addWidget(self.progress_bar, 1)
         
         # START / 取消按钮
