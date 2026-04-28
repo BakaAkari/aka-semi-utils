@@ -276,7 +276,7 @@ class MainWindow(QMainWindow):
         self.start_btn.setVisible(not processing)
         self.cancel_btn.setVisible(processing)
         self.thumb_container.setEnabled(not processing)
-        self.tabs.setEnabled(not processing)
+        self.config_drawer.setEnabled(not processing)
         self.output_input.setEnabled(not processing)
         self.override_check.setEnabled(not processing)
     
