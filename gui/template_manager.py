@@ -1,4 +1,4 @@
-"""模板管理器 — 模板列表、预览、保存、应用。"""
+"""模板管理器 — 针对窄窗口优化的紧凑布局。"""
 
 from pathlib import Path
 from typing import List, Dict, Any
@@ -6,8 +6,8 @@ import json
 import logging
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QPushButton, QLabel, QMessageBox, QInputDialog, QSplitter
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QListWidget, QListWidgetItem,
+    QPushButton, QLabel, QMessageBox, QInputDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap, QImage
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class TemplateManager(QWidget):
-    """模板管理面板。"""
+    """模板管理面板 — 窄窗口紧凑布局。"""
     
     template_applied = pyqtSignal(str)  # 应用模板名称
     
@@ -34,66 +34,62 @@ class TemplateManager(QWidget):
         self._load_templates()
     
     def _setup_ui(self):
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
         
-        # 左右分栏
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # 左侧：模板列表
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        
+        # === 上部：模板列表（窄高） ===
         self.list_widget = QListWidget()
-        self.list_widget.setMinimumWidth(200)
+        self.list_widget.setMaximumHeight(140)
+        self.list_widget.setMinimumHeight(100)
         self.list_widget.itemClicked.connect(self._on_template_selected)
         self.list_widget.itemDoubleClicked.connect(self._on_template_applied)
-        left_layout.addWidget(self.list_widget)
+        layout.addWidget(self.list_widget)
         
-        # 右侧：操作按钮 + 预览
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(12, 0, 0, 0)
-        right_layout.setSpacing(8)
-        
-        # 模板信息
-        self.info_label = QLabel("选择一个模板查看详情")
-        self.info_label.setStyleSheet("color: #999999; font-size: 12px;")
-        self.info_label.setWordWrap(True)
-        right_layout.addWidget(self.info_label)
-        
-        # 预览区域
-        self.preview_label = QLabel()
-        self.preview_label.setFixedSize(240, 160)
-        self.preview_label.setStyleSheet("border: 1px solid #333333; border-radius: 4px; background-color: #1E1E1E;")
+        # === 中部：预览区域 ===
+        self.preview_label = QLabel("选择一个模板查看详情")
+        self.preview_label.setMinimumHeight(80)
+        self.preview_label.setMaximumHeight(120)
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(self.preview_label)
+        self.preview_label.setWordWrap(True)
+        self.preview_label.setStyleSheet("""
+            QLabel {
+                border: 1px solid #333333;
+                border-radius: 4px;
+                background-color: #1E1E1E;
+                color: #999999;
+                font-size: 11px;
+                padding: 8px;
+            }
+        """)
+        layout.addWidget(self.preview_label)
         
-        # 操作按钮
-        self.apply_btn = QPushButton("应用此模板")
+        # === 下部：操作按钮（2×2 网格） ===
+        btn_grid = QGridLayout()
+        btn_grid.setSpacing(6)
+        btn_grid.setContentsMargins(0, 0, 0, 0)
+        
+        self.apply_btn = QPushButton("应用")
+        self.apply_btn.setObjectName("primary")
         self.apply_btn.clicked.connect(self._on_template_applied)
-        right_layout.addWidget(self.apply_btn)
         
-        save_btn = QPushButton("保存当前为模板")
+        save_btn = QPushButton("保存当前")
         save_btn.clicked.connect(self._save_current_as_template)
-        right_layout.addWidget(save_btn)
         
-        save_as_btn = QPushButton("模板另存为...")
+        save_as_btn = QPushButton("另存为...")
         save_as_btn.clicked.connect(self._save_as_template)
-        right_layout.addWidget(save_as_btn)
         
-        self.delete_btn = QPushButton("删除模板")
+        self.delete_btn = QPushButton("删除")
         self.delete_btn.setStyleSheet("QPushButton { color: #EF4444; }")
         self.delete_btn.clicked.connect(self._delete_template)
-        right_layout.addWidget(self.delete_btn)
         
-        right_layout.addStretch()
+        btn_grid.addWidget(self.apply_btn, 0, 0)
+        btn_grid.addWidget(save_btn, 0, 1)
+        btn_grid.addWidget(save_as_btn, 1, 0)
+        btn_grid.addWidget(self.delete_btn, 1, 1)
         
-        splitter.addWidget(left_widget)
-        splitter.addWidget(right_widget)
-        splitter.setSizes([300, 300])
-        layout.addWidget(splitter)
+        layout.addLayout(btn_grid)
+        layout.addStretch()
     
     def _load_templates(self):
         """加载所有模板。"""
@@ -135,24 +131,22 @@ class TemplateManager(QWidget):
         if not name:
             return
         
-        self.info_label.setText(f"模板：{name}\n类型：{tag}")
-        
-        # 生成预览
-        self._generate_preview(path)
-        
         # 自定义模板才可删除
         self.delete_btn.setEnabled(tag == "自定义")
+        
+        # 生成预览
+        self._generate_preview(name, tag, path)
     
-    def _generate_preview(self, template_path: str):
-        """生成模板预览图。"""
-        # 简化预览：显示模板 JSON 中的 processor 列表
+    def _generate_preview(self, name: str, tag: str, template_path: str):
+        """生成模板预览文本。"""
         try:
             with open(template_path, "r", encoding="utf-8") as f:
                 processors = json.load(f)
             names = [p.get("processor_name", "未知") for p in processors[:5]]
-            text = "处理器:\n" + "\n".join(names)
+            text = f"<b>{name}</b>  [{tag}]<br><br>"
+            text += "处理器:<br>" + "<br>".join(names)
             if len(processors) > 5:
-                text += f"\n... 等 {len(processors)} 个处理器"
+                text += f"<br>... 等 {len(processors)} 个"
             self.preview_label.setText(text)
             self.preview_label.setStyleSheet("""
                 QLabel {
@@ -165,7 +159,7 @@ class TemplateManager(QWidget):
                 }
             """)
         except Exception:
-            self.preview_label.setText("预览生成失败")
+            self.preview_label.setText(f"<b>{name}</b><br>预览生成失败")
     
     def _on_template_applied(self):
         """应用选中模板。"""
@@ -251,8 +245,16 @@ class TemplateManager(QWidget):
             try:
                 Path(path).unlink()
                 self._load_templates()
-                self.preview_label.clear()
-                self.preview_label.setStyleSheet("border: 1px solid #333333; border-radius: 4px; background-color: #1E1E1E;")
-                self.info_label.setText("选择一个模板查看详情")
+                self.preview_label.setText("选择一个模板查看详情")
+                self.preview_label.setStyleSheet("""
+                    QLabel {
+                        border: 1px solid #333333;
+                        border-radius: 4px;
+                        background-color: #1E1E1E;
+                        color: #999999;
+                        font-size: 11px;
+                        padding: 8px;
+                    }
+                """)
             except Exception as e:
                 QMessageBox.warning(self, "错误", f"删除失败: {e}")
