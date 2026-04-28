@@ -35,70 +35,96 @@ class CornerEditor(QWidget):
     
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(8)
+        layout.setContentsMargins(8, 8, 8, 8)
         
-        # 字段列表区域
-        fields_label = QLabel("字段列表：")
-        layout.addWidget(fields_label)
+        # ---- 字段列表（水平排列，上限3个）----
+        fields_header = QHBoxLayout()
+        fields_header.addWidget(QLabel("字段："))
+        fields_header.addStretch()
+        layout.addLayout(fields_header)
         
-        self.fields_layout = QVBoxLayout()
-        self.fields_layout.setSpacing(6)
-        layout.addLayout(self.fields_layout)
+        # 水平容器
+        self.fields_container = QWidget()
+        self.fields_flow = QHBoxLayout(self.fields_container)
+        self.fields_flow.setSpacing(4)
+        self.fields_flow.setContentsMargins(0, 0, 0, 0)
+        self.fields_flow.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self.fields_container)
         
         # 添加字段按钮
         add_btn = QPushButton("+ 添加字段")
+        add_btn.setFixedWidth(100)
+        add_btn.setFixedHeight(28)
         add_btn.clicked.connect(self._add_field_row)
-        layout.addWidget(add_btn)
+        layout.addWidget(add_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         
-        # 分隔符
+        self.add_btn = add_btn  # 引用用于禁用/启用
+        
+        # ---- 分隔符 ----
         sep_layout = QHBoxLayout()
+        sep_layout.setSpacing(6)
         sep_layout.addWidget(QLabel("分隔符："))
         self.sep_input = QLineEdit(" · ")
+        self.sep_input.setFixedWidth(80)
         self.sep_input.textChanged.connect(self._on_changed)
         sep_layout.addWidget(self.sep_input)
+        sep_layout.addStretch()
         layout.addLayout(sep_layout)
         
-        # 字体选择 + 预览
-        font_layout = QHBoxLayout()
-        font_layout.addWidget(QLabel("字体："))
+        # ---- 字体 + 预览 ----
+        font_row = QHBoxLayout()
+        font_row.setSpacing(6)
+        font_row.addWidget(QLabel("字体："))
         self.font_combo = QComboBox()
         self.font_combo.addItems(list_fonts())
+        self.font_combo.setFixedWidth(200)
         self.font_combo.currentTextChanged.connect(self._on_font_changed)
-        font_layout.addWidget(self.font_combo)
-        layout.addLayout(font_layout)
+        font_row.addWidget(self.font_combo)
         
-        # 字体预览
+        # 字体预览放在同一行
         self.font_preview = FontPreview(self.font_combo.currentText())
-        layout.addWidget(self.font_preview)
+        font_row.addWidget(self.font_preview)
+        font_row.addStretch()
+        layout.addLayout(font_row)
         
-        # 颜色选择
-        color_layout = QHBoxLayout()
-        color_layout.addWidget(QLabel("颜色："))
+        # ---- 颜色 + 预览 ----
+        color_row = QHBoxLayout()
+        color_row.setSpacing(6)
+        color_row.addWidget(QLabel("颜色："))
         self.color_input = QLineEdit("#FFFFFF")
         self.color_input.setFixedWidth(80)
         self.color_input.textChanged.connect(self._on_changed)
-        color_layout.addWidget(self.color_input)
+        color_row.addWidget(self.color_input)
         
         self.color_btn = QPushButton()
         self.color_btn.setFixedSize(24, 24)
         self.color_btn.setStyleSheet("border-radius: 4px; border: 1px solid #666666;")
         self.color_btn.clicked.connect(self._pick_color)
-        color_layout.addWidget(self.color_btn)
-        color_layout.addStretch()
-        layout.addLayout(color_layout)
+        color_row.addWidget(self.color_btn)
+        
+        color_row.addStretch()
+        layout.addLayout(color_row)
         
         layout.addStretch()
     
     def _add_field_row(self, field_value: str = ""):
-        """添加一个字段行。"""
-        row = QHBoxLayout()
+        """添加一个字段行（上限3个）。"""
+        # 检查上限
+        if self.fields_flow.count() >= 3:
+            return
+        
+        container = QWidget()
+        row = QHBoxLayout(container)
+        row.setSpacing(4)
+        row.setContentsMargins(0, 0, 0, 0)
         
         combo = QComboBox()
         combo.addItems([
             "相机型号", "镜头型号", "拍摄参数", "拍摄日期",
             "厂商品牌", "地理位置", "自定义文本", "空"
         ])
-        combo.setFixedWidth(120)
+        combo.setFixedWidth(100)
         if field_value:
             idx = combo.findText(field_value)
             if idx >= 0:
@@ -108,23 +134,27 @@ class CornerEditor(QWidget):
         
         # 删除按钮
         del_btn = QPushButton("×")
-        del_btn.setFixedSize(24, 24)
-        del_btn.clicked.connect(lambda: self._remove_field_row(row))
+        del_btn.setFixedSize(20, 20)
+        del_btn.clicked.connect(lambda: self._remove_field_row(container))
         row.addWidget(del_btn)
-        row.addStretch()
         
-        self.fields_layout.addLayout(row)
+        self.fields_flow.addWidget(container)
+        self._update_add_btn()
         self._on_changed()
     
-    def _remove_field_row(self, row_layout):
+    def _remove_field_row(self, container):
         """删除一个字段行。"""
-        # 从布局中移除
-        while row_layout.count():
-            item = row_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        self.fields_layout.removeItem(row_layout)
+        container.deleteLater()
+        self._update_add_btn()
         self._on_changed()
+    
+    def _update_add_btn(self):
+        """根据字段数量禁用/启用添加按钮。"""
+        self.add_btn.setEnabled(self.fields_flow.count() < 3)
+        if self.fields_flow.count() >= 3:
+            self.add_btn.setText("已达上限")
+        else:
+            self.add_btn.setText("+ 添加字段")
     
     def _pick_color(self):
         """打开颜色选择器。"""
@@ -148,12 +178,13 @@ class CornerEditor(QWidget):
     def _on_changed(self):
         """任何配置变更时保存到 AppState。"""
         fields = []
-        for i in range(self.fields_layout.count()):
-            item = self.fields_layout.itemAt(i)
-            if item and item.layout():
-                # 找到 QComboBox
-                for j in range(item.layout().count()):
-                    widget = item.layout().itemAt(j).widget()
+        for i in range(self.fields_flow.count()):
+            item = self.fields_flow.itemAt(i)
+            if item and item.widget():
+                # 在容器内部找到 QComboBox
+                container = item.widget()
+                for j in range(container.layout().count()):
+                    widget = container.layout().itemAt(j).widget()
                     if isinstance(widget, QComboBox):
                         fields.append(widget.currentText())
                         break
@@ -171,8 +202,8 @@ class CornerEditor(QWidget):
         """从 AppState 加载配置。"""
         config: CornerConfig = getattr(self.state, self.corner_attr)
         
-        # 加载字段
-        for field in config.fields:
+        # 加载字段（限制最多3个）
+        for field in config.fields[:3]:
             self._add_field_row(field)
         if not config.fields:
             self._add_field_row()  # 至少一个空字段
@@ -185,6 +216,7 @@ class CornerEditor(QWidget):
         
         self.color_input.setText(config.color)
         self._update_color_btn(config.color)
+        self._update_add_btn()
 
 
 class LogoTab(QWidget):

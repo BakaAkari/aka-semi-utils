@@ -9,13 +9,13 @@ from core.font_manager import resolve_font
 
 
 class FontPreview(QLabel):
-    """字体预览 QLabel，显示'水印示例'四字。"""
+    """字体预览 QLabel，显示预览文字。"""
     
     def __init__(self, font_name: str = "NotoSansCJKsc-Regular.otf", color: str = "#FFFFFF", parent=None):
         super().__init__(parent)
         self.font_name = font_name
         self.color = color
-        self.setFixedSize(200, 40)
+        self.setFixedSize(100, 26)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("border: 1px solid #333333; border-radius: 4px;")
         self.update_preview()
@@ -40,12 +40,12 @@ class FontPreview(QLabel):
             pixmap = QPixmap.fromImage(qimg)
             self.setPixmap(pixmap)
         except Exception:
-            self.setText("水印示例")
+            self.setText("预览")
     
     def _generate_preview_image(self) -> Image.Image:
         """PIL 生成预览图。"""
         text = "水印示例"
-        size = (200, 40)
+        size = (100, 26)
         
         # 解析颜色
         color = self.color if self.color.startswith("#") else "#FFFFFF"
@@ -56,7 +56,7 @@ class FontPreview(QLabel):
         
         try:
             font_path = resolve_font(self.font_name)
-            font = ImageFont.truetype(str(font_path), 18)
+            font = ImageFont.truetype(str(font_path), 12)
         except Exception:
             font = ImageFont.load_default()
         
