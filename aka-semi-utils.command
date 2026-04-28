@@ -3,7 +3,7 @@
 # 关闭时保留窗口 3 秒，方便查看错误信息
 
 cd "$(dirname "$0")"
-./.venv/bin/python gui.py
+uv run python main.py
 
 if [ $? -ne 0 ]; then
     echo ""

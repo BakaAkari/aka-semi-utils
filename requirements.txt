@@ -1,7 +1,0 @@
-flask
-jinja2
-numpy
-pillow
-pillow-heif
-loguru
-tomli

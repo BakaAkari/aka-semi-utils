@@ -5,14 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "customtkinter>=5.2.2",
-    "flask>=3.1.2",
     "jinja2>=3.1.6",
     "loguru>=0.7.3",
     "numpy>=2.4.0",
     "pillow>=12.1.0",
     "pillow-heif>=1.1.1",
-    "pystray>=0.19.5",
+    "pyqt6>=6.11.0",
     "tomli>=2.3.0",
 ]
 
@@ -20,6 +18,4 @@ dependencies = [
 python = ">=3.13"
 
 [dependency-groups]
-dev = [
-    "pyqt6>=6.11.0",
-]
+dev = []

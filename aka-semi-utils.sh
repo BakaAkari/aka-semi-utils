@@ -2,4 +2,4 @@
 # aka-semi-utils 极简水印启动脚本
 
 cd "$(dirname "$0")"
-./.venv/bin/python gui.py
+uv run python main.py

@@ -68,13 +68,3 @@ def generate_preview(name: str, text: str = "") -> Image.Image:
     y = max(0, (PREVIEW_SIZE[1] - text_h) // 2 - bbox[1])
     draw.text((x, y), display_text, fill="black", font=font)
     return img
-
-
-def font_preview_tk_image(name: str, text: str = "", master=None):
-    """
-    生成 tkinter 可用的 PhotoImage 预览。
-    调用方负责保留引用防止 GC。
-    """
-    from PIL import ImageTk
-    img = generate_preview(name, text=text)
-    return ImageTk.PhotoImage(img, master=master)
