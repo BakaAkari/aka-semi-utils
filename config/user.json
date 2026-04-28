@@ -1,1 +1,7 @@
-{}
+{
+  "template": "default",
+  "output": {
+    "path": "{source_dir}/logo",
+    "override": true
+  }
+}

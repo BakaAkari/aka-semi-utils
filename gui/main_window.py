@@ -5,9 +5,10 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QPushButton, QLineEdit, QCheckBox,
-    QProgressBar, QLabel, QFileDialog, QMessageBox
+    QProgressBar, QLabel, QFileDialog, QMessageBox,
+    QFrame, QScrollArea
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from .models import AppState
 from .styles import get_stylesheet
@@ -16,6 +17,82 @@ from .config_panel import ConfigPanel
 from .advanced_panel import AdvancedPanel
 from .template_manager import TemplateManager
 from .template_assembler import state_to_processors
+
+
+class CollapsibleConfigPanel(QFrame):
+    """可折叠配置抽屉 — 包含三大 Tab。"""
+    
+    def __init__(self, state: AppState, project_root: Path, parent=None):
+        super().__init__(parent)
+        self.state = state
+        self.project_root = project_root
+        self._expanded = False
+        
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        
+        # 折叠标题栏
+        self.header = QPushButton("▶ 高级配置")
+        self.header.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: #1E1E1E;
+                color: #999999;
+                padding: 10px 12px;
+                text-align: left;
+                font-weight: bold;
+                font-size: 13px;
+                border-top: 1px solid #333333;
+                border-bottom: 1px solid #333333;
+            }
+            QPushButton:hover {
+                background-color: #2A2A2A;
+                color: #E0E0E0;
+            }
+        """)
+        self.header.clicked.connect(self._toggle)
+        layout.addWidget(self.header)
+        
+        # 内容区域（默认隐藏）
+        self.content = QWidget()
+        self.content.setVisible(False)
+        content_layout = QVBoxLayout(self.content)
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setSpacing(8)
+        
+        # 三大 Tab
+        self.tabs = QTabWidget()
+        self.tabs.setMaximumHeight(400)
+        
+        self.config_panel = ConfigPanel(self.state)
+        self.tabs.addTab(self.config_panel, "水印配置")
+        
+        self.advanced_panel = AdvancedPanel(self.state)
+        self.tabs.addTab(self.advanced_panel, "高级设置")
+        
+        self.template_manager = TemplateManager(self.state, self.project_root)
+        self.template_manager.template_applied.connect(self._on_template_applied)
+        self.tabs.addTab(self.template_manager, "模板")
+        
+        content_layout.addWidget(self.tabs)
+        layout.addWidget(self.content)
+    
+    def _toggle(self):
+        self._expanded = not self._expanded
+        self.content.setVisible(self._expanded)
+        self.header.setText("▼ 高级配置" if self._expanded else "▶ 高级配置")
+    
+    def _on_template_applied(self, name: str):
+        self.advanced_panel._load_state()
+        QMessageBox.information(self, "模板已应用", f"已应用模板：{name}")
+    
+    def setEnabled(self, enabled: bool):
+        self.content.setEnabled(enabled)
+        # 标题栏保持可点击
 
 
 class MainWindow(QMainWindow):
@@ -47,32 +124,15 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
         
-        # === 缩略图容器 ===
+        # === 上层：缩略图容器 ===
         self.thumb_container = ThumbContainer()
         self.thumb_container.file_added.connect(self._on_files_added)
         self.thumb_container.file_removed.connect(self._on_file_removed)
         layout.addWidget(self.thumb_container)
         
-        # === 三大 Tab ===
-        self.tabs = QTabWidget()
-        
-        # 水印配置
-        self.config_panel = ConfigPanel(self.app_state)
-        self.tabs.addTab(self.config_panel, "水印配置")
-        
-        # 高级设置
-        self.advanced_panel = AdvancedPanel(self.app_state)
-        self.tabs.addTab(self.advanced_panel, "高级设置")
-        
-        # 模板管理
-        self.template_manager = TemplateManager(self.app_state, self.project_root)
-        self.template_manager.template_applied.connect(self._on_template_applied)
-        self.tabs.addTab(self.template_manager, "模板")
-        
-        layout.addWidget(self.tabs, 1)
-        
-        # === 底部操作区 ===
+        # === 中层：底部操作区（固定高度 120px）===
         bottom = QWidget()
+        bottom.setFixedHeight(120)
         bottom_layout = QVBoxLayout(bottom)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(8)
@@ -127,6 +187,10 @@ class MainWindow(QMainWindow):
         bottom_layout.addLayout(btn_row)
         
         layout.addWidget(bottom)
+        
+        # === 下层：可折叠配置抽屉 ===
+        self.config_drawer = CollapsibleConfigPanel(self.app_state, self.project_root)
+        layout.addWidget(self.config_drawer)
         
         # 连接 AppState 信号
         self.app_state.files_changed.connect(self._on_state_files_changed)
