@@ -101,7 +101,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("极简水印")
-        self.setMinimumSize(900, 650)
+        self.setMinimumSize(450, 650)
+        self.resize(500, 720)
         
         # 项目根目录
         self.project_root = Path(__file__).parent.parent
@@ -130,12 +131,11 @@ class MainWindow(QMainWindow):
         self.thumb_container.file_removed.connect(self._on_file_removed)
         layout.addWidget(self.thumb_container)
         
-        # === 中层：底部操作区（固定高度 120px）===
+        # === 中层：底部操作区 + 配置抽屉 ===
         bottom = QWidget()
-        bottom.setFixedHeight(120)
         bottom_layout = QVBoxLayout(bottom)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
-        bottom_layout.setSpacing(8)
+        bottom_layout.setSpacing(6)
         
         # 输出路径
         output_row = QHBoxLayout()
@@ -156,41 +156,33 @@ class MainWindow(QMainWindow):
         output_row.addStretch()
         bottom_layout.addLayout(output_row)
         
-        # 进度条 + 状态
+        # 进度条 + START按钮（同一行）
         progress_row = QHBoxLayout()
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         progress_row.addWidget(self.progress_bar, 1)
         
-        self.status_label = QLabel("就绪")
-        self.status_label.setFixedWidth(120)
-        progress_row.addWidget(self.status_label)
-        bottom_layout.addLayout(progress_row)
-        
-        # START 按钮
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        
+        # START / 取消按钮
         self.cancel_btn = QPushButton("取消")
         self.cancel_btn.setVisible(False)
         self.cancel_btn.clicked.connect(self._on_cancel)
-        btn_row.addWidget(self.cancel_btn)
+        progress_row.addWidget(self.cancel_btn)
         
         self.start_btn = QPushButton("START")
         self.start_btn.setObjectName("primary")
-        self.start_btn.setFixedWidth(120)
-        self.start_btn.setFixedHeight(36)
+        self.start_btn.setFixedWidth(80)
+        self.start_btn.setFixedHeight(28)
         self.start_btn.clicked.connect(self._on_start)
-        btn_row.addWidget(self.start_btn)
+        progress_row.addWidget(self.start_btn)
         
-        bottom_layout.addLayout(btn_row)
+        bottom_layout.addLayout(progress_row)
+        
+        # 配置抽屉（紧接进度条下方）
+        self.config_drawer = CollapsibleConfigPanel(self.app_state, self.project_root)
+        bottom_layout.addWidget(self.config_drawer)
         
         layout.addWidget(bottom)
-        
-        # === 下层：可折叠配置抽屉 ===
-        self.config_drawer = CollapsibleConfigPanel(self.app_state, self.project_root)
-        layout.addWidget(self.config_drawer)
         
         # 连接 AppState 信号
         self.app_state.files_changed.connect(self._on_state_files_changed)
@@ -272,7 +264,8 @@ class MainWindow(QMainWindow):
     
     def _on_progress_changed(self, progress: int, status: str):
         self.progress_bar.setValue(progress)
-        self.status_label.setText(status)
+        # 进度条文字直接显示状态
+        self.progress_bar.setFormat(f"{status} %p%")
     
     def _set_processing_state(self, processing: bool):
         """切换处理中/就绪状态。"""
