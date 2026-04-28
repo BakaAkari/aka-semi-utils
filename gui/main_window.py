@@ -137,23 +137,23 @@ class MainWindow(QMainWindow):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(6)
         
-        # 输出路径
+        # 输出路径行：输入框自适应，浏览/覆盖右对齐
         output_row = QHBoxLayout()
         output_row.addWidget(QLabel("输出路径："))
         self.output_input = QLineEdit(self.app_state.output.path)
         self.output_input.setPlaceholderText("{source_dir}/logo")
         self.output_input.textChanged.connect(self._on_output_changed)
-        output_row.addWidget(self.output_input)
+        output_row.addWidget(self.output_input, 1)  # stretch=1，自适应
         
         browse_btn = QPushButton("浏览...")
         browse_btn.clicked.connect(self._browse_output)
         output_row.addWidget(browse_btn)
         
-        self.override_check = QCheckBox("覆盖已存在")
+        self.override_check = QCheckBox("覆盖")
         self.override_check.setChecked(self.app_state.output.override)
         self.override_check.stateChanged.connect(self._on_output_changed)
         output_row.addWidget(self.override_check)
-        output_row.addStretch()
+        
         bottom_layout.addLayout(output_row)
         
         # 进度条 + START按钮（同一行）
