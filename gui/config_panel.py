@@ -4,14 +4,11 @@ from typing import List
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QComboBox,
-    QLineEdit, QLabel, QPushButton, QGridLayout, QFileDialog, QColorDialog
+    QLineEdit, QLabel, QPushButton, QGridLayout, QFileDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor
 
 from .models import AppState, CornerConfig, LogoConfig
-from .font_preview import FontPreview
-from core.font_manager import list_fonts
 
 
 class CornerEditor(QWidget):
@@ -72,40 +69,6 @@ class CornerEditor(QWidget):
         sep_layout.addStretch()
         layout.addLayout(sep_layout)
         
-        # ---- 字体 + 预览 ----
-        font_row = QHBoxLayout()
-        font_row.setSpacing(6)
-        font_row.addWidget(QLabel("字体："))
-        self.font_combo = QComboBox()
-        self.font_combo.addItems(list_fonts())
-        self.font_combo.setFixedWidth(200)
-        self.font_combo.currentTextChanged.connect(self._on_font_changed)
-        font_row.addWidget(self.font_combo)
-        
-        # 字体预览放在同一行
-        self.font_preview = FontPreview(self.font_combo.currentText())
-        font_row.addWidget(self.font_preview)
-        font_row.addStretch()
-        layout.addLayout(font_row)
-        
-        # ---- 颜色 + 预览 ----
-        color_row = QHBoxLayout()
-        color_row.setSpacing(6)
-        color_row.addWidget(QLabel("颜色："))
-        self.color_input = QLineEdit("#FFFFFF")
-        self.color_input.setFixedWidth(80)
-        self.color_input.textChanged.connect(self._on_changed)
-        color_row.addWidget(self.color_input)
-        
-        self.color_btn = QPushButton()
-        self.color_btn.setFixedSize(24, 24)
-        self.color_btn.setStyleSheet("border-radius: 4px; border: 1px solid #666666;")
-        self.color_btn.clicked.connect(self._pick_color)
-        color_row.addWidget(self.color_btn)
-        
-        color_row.addStretch()
-        layout.addLayout(color_row)
-        
         layout.addStretch()
     
     def _add_field_row(self, field_value: str = ""):
@@ -156,25 +119,6 @@ class CornerEditor(QWidget):
         else:
             self.add_btn.setText("+ 添加字段")
     
-    def _pick_color(self):
-        """打开颜色选择器。"""
-        color = QColorDialog.getColor(QColor(self.color_input.text()), self)
-        if color.isValid():
-            hex_color = color.name().upper()
-            self.color_input.setText(hex_color)
-            self._update_color_btn(hex_color)
-    
-    def _update_color_btn(self, color: str):
-        """更新颜色按钮显示。"""
-        self.color_btn.setStyleSheet(
-            f"background-color: {color}; border-radius: 4px; border: 1px solid #666666;"
-        )
-    
-    def _on_font_changed(self, font_name: str):
-        """字体变更。"""
-        self.font_preview.set_font(font_name)
-        self._on_changed()
-    
     def _on_changed(self):
         """任何配置变更时保存到 AppState。"""
         fields = []
@@ -189,11 +133,12 @@ class CornerEditor(QWidget):
                         fields.append(widget.currentText())
                         break
         
+        # 字体和颜色从全局 AppState 获取
         config = CornerConfig(
             fields=fields,
             separator=self.sep_input.text(),
-            font=self.font_combo.currentText(),
-            color=self.color_input.text(),
+            font=self.state.advanced.global_font,
+            color=self.state.advanced.global_color,
         )
         self.state.set_corner_config(self.corner_attr, config)
         self.changed.emit()
@@ -210,12 +155,6 @@ class CornerEditor(QWidget):
         
         self.sep_input.setText(config.separator)
         
-        idx = self.font_combo.findText(config.font)
-        if idx >= 0:
-            self.font_combo.setCurrentIndex(idx)
-        
-        self.color_input.setText(config.color)
-        self._update_color_btn(config.color)
         self._update_add_btn()
 
 

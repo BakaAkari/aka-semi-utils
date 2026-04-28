@@ -92,6 +92,11 @@ class AdvancedPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
+        # 分组: 字体与颜色
+        font_group = CollapsibleGroup("字体与颜色")
+        self._setup_font_group(font_group)
+        layout.addWidget(font_group)
+
         # 分组 1: 边框/留白
         margin_group = CollapsibleGroup("边框/留白")
         self._setup_margin_group(margin_group)
@@ -128,6 +133,36 @@ class AdvancedPanel(QWidget):
         layout.addWidget(sig_group)
 
         layout.addStretch()
+
+    def _setup_font_group(self, group: CollapsibleGroup):
+        """字体与颜色设置。"""
+        # 字体选择
+        font_row = QHBoxLayout()
+        font_row.addWidget(QLabel("字体："))
+        self.global_font = QComboBox()
+        from core.font_manager import list_fonts
+        self.global_font.addItems(list_fonts())
+        self.global_font.setFixedWidth(200)
+        self.global_font.currentTextChanged.connect(self._on_changed)
+        font_row.addWidget(self.global_font)
+        font_row.addStretch()
+        group.add_layout(font_row)
+        
+        # 颜色选择
+        color_row = QHBoxLayout()
+        color_row.addWidget(QLabel("颜色："))
+        self.global_color = QLineEdit("#FFFFFF")
+        self.global_color.setFixedWidth(80)
+        self.global_color.textChanged.connect(self._on_changed)
+        color_row.addWidget(self.global_color)
+        
+        self.global_color_btn = QPushButton()
+        self.global_color_btn.setFixedSize(24, 24)
+        self.global_color_btn.setStyleSheet("border-radius: 4px; border: 1px solid #666666;")
+        self.global_color_btn.clicked.connect(lambda: self._pick_color(self.global_color, self.global_color_btn))
+        color_row.addWidget(self.global_color_btn)
+        color_row.addStretch()
+        group.add_layout(color_row)
 
     def _setup_margin_group(self, group: CollapsibleGroup):
         """边框/留白设置。"""
@@ -345,6 +380,8 @@ class AdvancedPanel(QWidget):
         self.quality_label.setText(str(self.quality_slider.value()))
 
         config = AdvancedConfig(
+            global_font=self.global_font.currentText(),
+            global_color=self.global_color.text(),
             left_margin=self.left_margin_spin.value(),
             right_margin=self.right_margin_spin.value(),
             top_margin=self.top_margin_spin.value(),
@@ -372,6 +409,15 @@ class AdvancedPanel(QWidget):
     def _load_state(self):
         """从 AppState 加载配置。"""
         cfg = self.state.advanced
+        
+        # 全局字体与颜色
+        idx = self.global_font.findText(cfg.global_font)
+        if idx >= 0:
+            self.global_font.setCurrentIndex(idx)
+        self.global_color.setText(cfg.global_color)
+        self.global_color_btn.setStyleSheet(f"background-color: {cfg.global_color}; border-radius: 4px; border: 1px solid #666666;")
+        
+        # 边距
         self.left_margin_spin.setValue(cfg.left_margin)
         self.right_margin_spin.setValue(cfg.right_margin)
         self.top_margin_spin.setValue(cfg.top_margin)

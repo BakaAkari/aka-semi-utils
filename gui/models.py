@@ -32,6 +32,10 @@ class LogoConfig:
 @dataclass
 class AdvancedConfig:
     """高级设置配置。"""
+    # 全局字体
+    global_font: str = "NotoSansCJKsc-Regular.otf"
+    global_color: str = "#FFFFFF"
+    
     # 边框/留白
     left_margin: int = 0
     right_margin: int = 0

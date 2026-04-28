@@ -152,7 +152,7 @@ def _build_watermark_config(state: AppState) -> Dict[str, Any]:
     """从 AppState 构建水印处理器配置。"""
     config = {}
     
-    # 四角配置
+    # 四角配置 — 使用全局字体和颜色
     for corner, attr in [
         ("left_top", "left_top"),
         ("left_bottom", "left_bottom"),
@@ -163,8 +163,9 @@ def _build_watermark_config(state: AppState) -> Dict[str, Any]:
         if corner_cfg.fields:
             config[f"{corner}_field"] = corner_cfg.fields
             config[f"{corner}_separator"] = corner_cfg.separator
-            config[f"{corner}_font"] = corner_cfg.font
-            config[f"{corner}_color"] = corner_cfg.color
+            # 使用全局字体和颜色
+            config[f"{corner}_font"] = state.advanced.global_font
+            config[f"{corner}_color"] = state.advanced.global_color
     
     # Logo 配置
     logo = state.logo
