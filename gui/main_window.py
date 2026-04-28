@@ -185,6 +185,9 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(bottom)
         
+        # === 关键：把所有多余空间推到底部 ===
+        layout.addStretch(1)
+        
         # 连接 AppState 信号
         self.app_state.files_changed.connect(self._on_state_files_changed)
         self.app_state.progress_changed.connect(self._on_progress_changed)
