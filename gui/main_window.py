@@ -1,6 +1,7 @@
 """主窗口 — 整合所有组件，不做 God Object。"""
 
 from pathlib import Path
+import logging
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -17,6 +18,7 @@ from .config_panel import ConfigPanel
 from .advanced_panel import AdvancedPanel
 from .template_manager import TemplateManager
 from .template_assembler import state_to_processors
+from .process_thread import ProcessThread
 
 
 class CollapsibleConfigPanel(QFrame):
@@ -222,47 +224,61 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "模板已应用", f"已应用模板：{name}")
     
     def _on_start(self):
-        """开始处理。"""
+        """开始处理 — 启动真实处理线程。"""
         if not self.app_state.selected_files:
             QMessageBox.warning(self, "提示", "请先选择图片")
             return
         
-        # 准备处理器
+        # 准备处理器配置
         try:
             processors = state_to_processors(self.app_state)
         except Exception as e:
             QMessageBox.warning(self, "错误", f"配置生成失败: {e}")
             return
         
+        # 解析输出路径模式
+        output_pattern = self.output_input.text().strip() or "{source_dir}/logo"
+        
         # 禁用控件
         self._set_processing_state(True)
         
-        # TODO: 启动 ProcessThread
-        self.app_state.set_processing(True, 0, "处理中...")
-        
-        # 模拟处理（后续替换为真实处理线程）
-        from PyQt6.QtCore import QTimer
-        self._progress = 0
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._simulate_progress)
-        self._timer.start(100)
+        # 启动处理线程
+        self._thread = ProcessThread(
+            files=self.app_state.selected_files,
+            processors=processors,
+            output_pattern=output_pattern,
+            override=self.override_check.isChecked(),
+            parent=self,
+        )
+        self._thread.progress.connect(self._on_thread_progress)
+        self._thread.file_done.connect(self._on_file_done)
+        self._thread.finished_all.connect(self._on_finished_all)
+        self._thread.start()
     
-    def _simulate_progress(self):
-        """模拟进度（临时，后续替换为真实线程）。"""
-        self._progress += 5
-        if self._progress >= 100:
-            self._progress = 100
-            self._timer.stop()
-            self.app_state.set_processing(False, 100, "完成")
-            self._set_processing_state(False)
-            QMessageBox.information(self, "完成", f"处理了 {len(self.app_state.selected_files)} 张图片")
+    def _on_thread_progress(self, progress: int, status: str):
+        """接收线程进度更新。"""
+        self.app_state.set_processing(True, progress, status)
+    
+    def _on_file_done(self, file_path: str, success: bool, message: str):
+        """单个文件处理完成。"""
+        if not success:
+            logging.getLogger(__name__).warning(f"处理失败: {file_path} — {message}")
+    
+    def _on_finished_all(self, all_success: bool, message: str):
+        """全部处理完成。"""
+        self._set_processing_state(False)
+        self.app_state.set_processing(False, 100 if all_success else 0, "完成" if all_success else "部分失败")
+        
+        if all_success:
+            QMessageBox.information(self, "完成", message)
         else:
-            self.app_state.set_processing(True, self._progress, "处理中...")
+            QMessageBox.warning(self, "处理结果", message)
     
     def _on_cancel(self):
         """取消处理。"""
-        if hasattr(self, '_timer') and self._timer.isActive():
-            self._timer.stop()
+        if hasattr(self, '_thread') and self._thread.isRunning():
+            self._thread.cancel()
+            self._thread.wait(3000)  # 等待最多 3 秒
         self.app_state.set_processing(False, 0, "已取消")
         self._set_processing_state(False)
     
