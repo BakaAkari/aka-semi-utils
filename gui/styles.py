@@ -78,8 +78,7 @@ def get_stylesheet() -> str:
         color: {c["TEXT_PRIMARY"]};
         border: 1px solid {c["BORDER"]};
         border-radius: 4px;
-        padding: 6px 12px;
-        min-height: 28px;
+        padding: 4px 12px;
     }}
     QPushButton:hover {{
         background-color: {c["SURFACE_HOVER"]};
