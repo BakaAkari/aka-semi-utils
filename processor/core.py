@@ -10,6 +10,9 @@ from typing import Dict, Any, Type, List, MutableMapping, Iterator, Optional
 
 from PIL import Image, ImageColor, ImageOps
 
+# 允许处理大图片（禁用 DecompressionBombWarning）
+Image.MAX_IMAGE_PIXELS = None
+
 from core.configs import load_config
 from core.logger import logger
 from core.util import get_exif, log_rt

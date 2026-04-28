@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "customtkinter>=5.2.2",
     "flask>=3.1.2",
     "jinja2>=3.1.6",
     "loguru>=0.7.3",
@@ -17,3 +18,8 @@ dependencies = [
 
 [tool.poetry.dependencies]
 python = ">=3.13"
+
+[dependency-groups]
+dev = [
+    "pyqt6>=6.11.0",
+]

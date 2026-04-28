@@ -6,6 +6,7 @@ from typing import Tuple
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
+from core.logger import logger
 from core.util import get_exif
 from processor.core import ImageProcessor, PipelineContext, start_process, get_processor
 from processor.types import Alignment
@@ -258,13 +259,32 @@ class WatermarkFilter(FilterProcessor):
         right_alignment = ctx.getenum("right_alignment", Alignment.RIGHT, Alignment)
 
         for t_s in [ctx.get("left_top"), ctx.get("left_bottom"), ctx.get("right_top"), ctx.get("right_bottom")]:
-            if "height" not in t_s:
+            if t_s and "height" not in t_s:
                 t_s["height"] = int(bottom_margin * .3)
 
         left_top = start_process([ctx.get("left_top")])
         left_bottom = start_process([ctx.get("left_bottom")])
         right_top = start_process([ctx.get("right_top")])
         right_bottom = start_process([ctx.get("right_bottom")])
+
+        # ── 自适应缩放：防止文本在窄画布下被裁剪 ──
+        canvas_width = img.width + left_margin + right_margin
+        # 文本最大宽度限制为有效画布宽度的 42%（左右两侧合计约 84%，留 16% 间距）
+        effective_width = canvas_width - left_margin - right_margin
+        max_text_width = max(1, int(effective_width * 0.42))
+
+        def _fit_text(text_img: Image.Image) -> Image.Image:
+            if text_img.width > max_text_width:
+                scale = max_text_width / text_img.width
+                new_h = int(text_img.height * scale)
+                logger.info(f"[WatermarkFilter] 文本自适应缩放: {text_img.width}x{text_img.height} -> {max_text_width}x{new_h} (scale={scale:.2f})")
+                return text_img.resize((max_text_width, new_h), Image.Resampling.LANCZOS)
+            return text_img
+
+        left_top = _fit_text(left_top)
+        left_bottom = _fit_text(left_bottom)
+        right_top = _fit_text(right_top)
+        right_bottom = _fit_text(right_bottom)
 
         left_logo = Image.open(ctx.get("left_logo")).convert('RGBA') if ctx.get("left_logo") else None
         right_logo = Image.open(ctx.get("right_logo")).convert('RGBA') if ctx.get("right_logo") else None
