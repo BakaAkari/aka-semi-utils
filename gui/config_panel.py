@@ -133,12 +133,10 @@ class CornerEditor(QWidget):
                         fields.append(widget.currentText())
                         break
         
-        # 字体和颜色从全局 AppState 获取
+        # 字体和颜色从全局 AppState 获取（CornerConfig 中的 font/color 已废弃）
         config = CornerConfig(
             fields=fields,
             separator=self.sep_input.text(),
-            font=self.state.advanced.global_font,
-            color=self.state.advanced.global_color,
         )
         self.state.set_corner_config(self.corner_attr, config)
         self.changed.emit()
