@@ -156,7 +156,7 @@ def _build_watermark_config(state: AppState) -> Dict[str, Any]:
     _FIELD_TEMPLATES = {
         "相机型号": "{{ exif.CameraModelName|default('-') | replace('_', '') }}",
         "镜头型号": "{{ exif.LensModel | default('-')}}",
-        "拍摄参数": "{{exif.FocalLengthIn35mmFormat|replace(' ', '')|default('-')}} f/{{exif.AperatureValue or exif.FNumber|default('-')}} {{exif.ShutterSpeed or exif.ShutterSpeedValue|default('-')}}s ISO{{exif.ISO|default('0')}}",
+        "拍摄参数": "{{exif.FocalLengthIn35mmFormat|replace(' ', '')|default('-')}} f/{{exif.ApertureValue or exif.FNumber|default('-')}} {{exif.ShutterSpeed or exif.ShutterSpeedValue|default('-')}}s ISO{{exif.ISO|default('0')}}",
         "拍摄日期": "{{(exif.DateTimeOriginal or exif.CreateDate or exif.DigitalCreationDate or exif.DateCreated or exif.DateTimeCreated or exif.DigitalCreationDateTime|default('0'))[:16]}}",
         "厂商品牌": "{{ exif.Make|default('-') }}",
         "地理位置": "{{ exif.GPSLatitude|default('-') }}, {{ exif.GPSLongitude|default('-') }}",
@@ -248,22 +248,88 @@ def _build_watermark_config(state: AppState) -> Dict[str, Any]:
 
 
 def _apply_watermark_config(processor: Dict[str, Any], state: AppState):
-    """从处理器配置还原到 AppState。"""
+    """从处理器配置还原到 AppState（读取嵌套格式）。"""
     for corner, attr in [
         ("left_top", "left_top"),
         ("left_bottom", "left_bottom"),
         ("right_top", "right_top"),
         ("right_bottom", "right_bottom"),
     ]:
-        if f"{corner}_field" in processor:
+        if corner in processor:
             corner_cfg = getattr(state, attr)
-            corner_cfg.fields = processor.get(f"{corner}_field", [])
-            corner_cfg.separator = processor.get(f"{corner}_separator", " · ")
-            corner_cfg.font = processor.get(f"{corner}_font", "NotoSansCJKsc-Regular.otf")
-            corner_cfg.color = processor.get(f"{corner}_color", "#FFFFFF")
+            corner_data = processor.get(corner, {})
+            # 嵌套格式：可能是 rich_text 或 multi_rich_text
+            pn = corner_data.get("processor_name", "")
+            if pn == "rich_text":
+                # 单字段
+                text = corner_data.get("text", "")
+                # 反向映射：Jinja2 模板 → GUI 字段名
+                _REVERSE_FIELD_MAP = {
+                    "{{ exif.CameraModelName|default('-') | replace('_', '') }}": "相机型号",
+                    "{{ exif.LensModel | default('-')}}": "镜头型号",
+                    "{{ exif.FocalLengthIn35mmFormat|replace(' ', '')|default('-')}}": "拍摄参数",
+                    "{{(exif.DateTimeOriginal or exif.CreateDate or exif.DigitalCreationDate or exif.DateCreated or exif.DateTimeCreated or exif.DigitalCreationDateTime|default('0'))[:16]}}": "拍摄日期",
+                    "{{ exif.Make|default('-') }}": "厂商品牌",
+                    "{{ exif.GPSLatitude|default('-') }}, {{ exif.GPSLongitude|default('-') }}": "地理位置",
+                }
+                field = _REVERSE_FIELD_MAP.get(text, "")
+                if text and not field:
+                    # 自定义文本
+                    field = "自定义文本"
+                    state.custom_text = text
+                corner_cfg.fields = [field] if field else []
+            elif pn == "multi_rich_text":
+                # 多字段：从 text_segments 还原
+                segments = corner_data.get("text_segments", [])
+                fields = []
+                for seg in segments:
+                    t = seg.get("text", "")
+                    # 跳过纯分隔符（空格或 ·）
+                    if t.strip() in ("", "·") or t.strip().startswith(" ") and "  " in t:
+                        continue
+                    _REVERSE_FIELD_MAP = {
+                        "{{ exif.CameraModelName|default('-') | replace('_', '') }}": "相机型号",
+                        "{{ exif.LensModel | default('-')}}": "镜头型号",
+                        "{{ exif.FocalLengthIn35mmFormat|replace(' ', '')|default('-')}}": "拍摄参数",
+                        "{{(exif.DateTimeOriginal or exif.CreateDate or exif.DigitalCreationDate or exif.DateCreated or exif.DateTimeCreated or exif.DigitalCreationDateTime|default('0'))[:16]}}": "拍摄日期",
+                        "{{ exif.Make|default('-') }}": "厂商品牌",
+                        "{{ exif.GPSLatitude|default('-') }}, {{ exif.GPSLongitude|default('-') }}": "地理位置",
+                    }
+                    field = _REVERSE_FIELD_MAP.get(t, "")
+                    if t and not field:
+                        field = "自定义文本"
+                        state.custom_text = t
+                    if field:
+                        fields.append(field)
+                corner_cfg.fields = fields
+            # 保留向后兼容：如果嵌套格式没有，尝试旧格式
+            if not corner_cfg.fields and f"{corner}_field" in processor:
+                corner_cfg.fields = processor.get(f"{corner}_field", [])
+                corner_cfg.separator = processor.get(f"{corner}_separator", " · ")
+                corner_cfg.font = processor.get(f"{corner}_font", "NotoSansCJKsc-Regular.otf")
+                corner_cfg.color = processor.get(f"{corner}_color", "#FFFFFF")
     
-    # Logo
-    if "logo_enable" in processor:
+    # Logo — 从嵌套格式读取（right_logo / center_logo / left_logo）
+    logo = state.logo
+    if "right_logo" in processor or "center_logo" in processor or "left_logo" in processor:
+        logo.enabled = "auto"
+        if "right_logo" in processor:
+            logo.position = "right"
+        elif "center_logo" in processor:
+            logo.position = "center"
+        elif "left_logo" in processor:
+            logo.position = "left"
+        logo.color = processor.get("delimiter_color", "#FFFFFF")
+        # 检查是否是自定义路径（非 Jinja2 表达式）
+        for pos in ["right_logo", "center_logo", "left_logo"]:
+            if pos in processor:
+                val = processor[pos]
+                if val and not val.startswith("{{"):
+                    logo.enabled = "custom"
+                    logo.custom_path = val
+                break
+    elif "logo_enable" in processor:
+        # 旧格式向后兼容
         state.logo.enabled = "auto"
         state.logo.position = processor.get("logo_position", "right")
         state.logo.color = processor.get("logo_color", "#FFFFFF")

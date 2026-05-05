@@ -25,7 +25,7 @@ def _font(name: str) -> str:
 def _format_params() -> str:
     """拍摄参数 Jinja2 拼接公式。"""
     focal = "{{exif.FocalLengthIn35mmFormat|replace(' ', '')|default('-')}}"
-    aperture = "{{exif.AperatureValue or exif.FNumber|default('-')}}"
+    aperture = "{{exif.ApertureValue or exif.FNumber|default('-')}}"
     shutter = "{{exif.ShutterSpeed or exif.ShutterSpeedValue|default('-')}}"
     iso = "{{exif.ISO|default('0')}}"
     return f"{focal} f/{aperture} {shutter}s ISO{iso}"
