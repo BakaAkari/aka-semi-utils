@@ -282,7 +282,7 @@ class WatermarkFilter(FilterProcessor):
             if text_img.width > max_text_width:
                 scale = max_text_width / text_img.width
                 new_h = int(text_img.height * scale)
-                logger.info(f"[WatermarkFilter] 文本自适应缩放: {text_img.width}x{text_img.height} -> {max_text_width}x{new_h} (scale={scale:.2f})")
+                logger.debug(f"[WatermarkFilter] 文本自适应缩放: {text_img.width}x{text_img.height} -> {max_text_width}x{new_h} (scale={scale:.2f})")
                 return text_img.resize((max_text_width, new_h), Image.Resampling.LANCZOS)
             return text_img
 
@@ -291,9 +291,24 @@ class WatermarkFilter(FilterProcessor):
         right_top = _fit_text(right_top)
         right_bottom = _fit_text(right_bottom)
 
-        left_logo = Image.open(ctx.get("left_logo")).convert('RGBA') if ctx.get("left_logo") else None
-        right_logo = Image.open(ctx.get("right_logo")).convert('RGBA') if ctx.get("right_logo") else None
-        center_logo = Image.open(ctx.get("center_logo")).convert('RGBA') if ctx.get("center_logo") else None
+        left_logo = None
+        if ctx.get("left_logo"):
+            try:
+                left_logo = Image.open(ctx.get("left_logo")).convert('RGBA')
+            except FileNotFoundError:
+                logger.warning(f"Logo 文件不存在: {ctx.get('left_logo')}")
+        right_logo = None
+        if ctx.get("right_logo"):
+            try:
+                right_logo = Image.open(ctx.get("right_logo")).convert('RGBA')
+            except FileNotFoundError:
+                logger.warning(f"Logo 文件不存在: {ctx.get('right_logo')}")
+        center_logo = None
+        if ctx.get("center_logo"):
+            try:
+                center_logo = Image.open(ctx.get("center_logo")).convert('RGBA')
+            except FileNotFoundError:
+                logger.warning(f"Logo 文件不存在: {ctx.get('center_logo')}")
         center_logo_height = ctx.getint("center_logo_height")
 
         canvas_width = img.width + left_margin + right_margin
@@ -321,8 +336,12 @@ class WatermarkFilter(FilterProcessor):
                 'buffer': [center_logo],
                 'height': logo_height
             })
-            ResizeFilter().process(resize_ctx)
-            center_logo = resize_ctx.get_buffer()[0]
+            resize_processor = get_processor("resize")
+            if resize_processor:
+                resize_processor().process(resize_ctx)
+                center_logo = resize_ctx.get_buffer()[0]
+            else:
+                logger.warning("ResizeFilter not found in registry, skipping logo resize")
             center_x = (canvas.width - center_logo.width) // 2
             center_y = footer_start_y + ((canvas.height - footer_start_y) - center_logo.height) // 2
             canvas.paste(center_logo, (center_x, center_y), mask=center_logo if center_logo.mode == 'RGBA' else None)

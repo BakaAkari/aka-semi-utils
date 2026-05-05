@@ -32,9 +32,16 @@ class AlignmentMerger(Merger):
         horizontal_alignment = ctx.getenum("horizontal_alignment", Alignment.CENTER, Alignment)
         vertical_alignment = ctx.getenum("vertical_alignment", Alignment.CENTER, Alignment)
         background: tuple = ctx.getcolor("background", (255, 255, 255, 0))  # 默认透明
-        offsets = json.loads(ctx.get("offsets", "[]"))
-        weights = json.loads(ctx.get("weights", "[]"))
-
+        # 解析偏移量和权重，传入非法 JSON 时回退到空数组
+        try:
+            offsets = json.loads(ctx.get("offsets", "[]"))
+        except json.JSONDecodeError:
+            offsets = []
+        try:
+            weights = json.loads(ctx.get("weights", "[]"))
+        except json.JSONDecodeError:
+            weights = []
+        
         if not buffer:
             return
         # 计算画布大小（所有图片的最大宽高）
@@ -42,12 +49,12 @@ class AlignmentMerger(Merger):
         max_height = max(img.height for img in buffer)
         # 创建画布
         canvas = Image.new("RGBA", (max_width, max_height), background)
-        # buffer 重排序
+        # buffer 重排序：按权重降序（权重大的在前），reverse=True
         if weights:
             missing_count = len(buffer) - len(weights)
             weights = weights + [0] * missing_count
             combined = zip(weights, buffer)
-            sorted_combined = sorted(combined, key=lambda x: x[0], reverse=False)
+            sorted_combined = sorted(combined, key=lambda x: x[0], reverse=True)
             buffer = [item for _, item in sorted_combined]
 
         # 遍历所有图片进行合并

@@ -10,8 +10,9 @@ from typing import Dict, Any, Type, List, MutableMapping, Iterator, Optional
 
 from PIL import Image, ImageColor, ImageOps
 
-# 允许处理大图片（禁用 DecompressionBombWarning）
-Image.MAX_IMAGE_PIXELS = None
+# 允许处理大图片（临时提升炸弹保护阈值，而非全局禁用）
+_original_max_pixels = Image.MAX_IMAGE_PIXELS
+Image.MAX_IMAGE_PIXELS = int(1e9)  # 临时提升到 10 亿像素，处理完恢复
 
 from core.configs import load_config
 from core.logger import logger
@@ -126,6 +127,9 @@ class PipelineContext(MutableMapping):
     def __len__(self) -> int:
         return len(self._config)
 
+    def __contains__(self, key: object) -> bool:
+        return key in self._config
+
 
 class ImageProcessor(ABC):
     @abstractmethod
@@ -163,8 +167,7 @@ class ImageProcessor(ABC):
                 # 打印日志
                 logger.debug(f"[monitor]processor#{self.name()} cost {cost_ms:.2f}ms")
 
-
-    # 将子类的 process 方法替换为包装后的方法
+        # 将子类的 process 方法替换为包装后的方法
         cls.process = wrapper
 
         # 自动注册到注册表
@@ -175,6 +178,11 @@ class ImageProcessor(ABC):
             # 注意：如果 __init__ 需要参数，这里可能会失败
             instance = cls()
             key = instance.name()
+            if key is None:
+                raise TypeError(
+                    f"{cls.__name__}.name() returned None, "
+                    f"must return a non-empty string for auto-registration."
+                )
             register_processor(key, cls)
         except Exception as e:
             # 如果无法创建实例，可以要求子类实现类级别的 name 属性

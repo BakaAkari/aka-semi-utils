@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QPushButton, QLineEdit, QCheckBox,
     QProgressBar, QLabel, QFileDialog, QMessageBox,
-    QFrame, QScrollArea
+    QFrame, QScrollArea, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -66,9 +66,9 @@ class CollapsibleConfigPanel(QFrame):
         content_layout.setContentsMargins(8, 8, 8, 8)
         content_layout.setSpacing(8)
         
-        # 三大 Tab
+        # 三大 Tab（自适应高度，避免小屏幕溢出）
         self.tabs = QTabWidget()
-        self.tabs.setMaximumHeight(600)
+        self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         self.config_panel = ConfigPanel(self.state)
         self.tabs.addTab(self.config_panel, "水印配置")

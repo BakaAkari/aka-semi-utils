@@ -166,12 +166,15 @@ def _build_corner_multi(corner: str, sources: list[str], separator: str, font: s
 
 
 def _render_value(value, context, template_globals):
-    """递归渲染值中的 Jinja2 模板表达式。"""
+    """递归渲染值中的 Jinja2 模板表达式。仅对包含模板语法的字符串进行渲染。"""
     if isinstance(value, str):
-        template = Template(value)
-        for k, v in template_globals.items():
-            template.globals[k] = v
-        return template.render(**context)
+        # 只有包含 Jinja2 模板标记的字符串才进行渲染
+        if "{{" in value or "{%" in value:
+            template = Template(value)
+            for k, v in template_globals.items():
+                template.globals[k] = v
+            return template.render(**context)
+        return value
     elif isinstance(value, list):
         return [_render_value(item, context, template_globals) for item in value]
     elif isinstance(value, dict):

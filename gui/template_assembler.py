@@ -343,13 +343,33 @@ def _apply_watermark_config(processor: Dict[str, Any], state: AppState):
     state.custom_text = processor.get("custom_text", "")
 
 
+TEMPLATE_VERSION = 1
+
+
 def load_template(template_path: Path) -> List[Dict[str, Any]]:
-    """从文件加载模板。"""
+    """从文件加载模板（支持版本号校验）。"""
     with open(template_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    
+    # 如果是带版本号的包装格式，解包
+    if isinstance(data, dict) and "version" in data:
+        if data.get("version") != TEMPLATE_VERSION:
+            logger.warning(
+                f"模板版本不匹配: 文件={data.get('version')}, "
+                f"当前={TEMPLATE_VERSION}"
+            )
+        return data.get("processors", [])
+    # 兼容旧格式（纯数组）
+    if isinstance(data, list):
+        return data
+    return []
 
 
 def save_template(processors: List[Dict[str, Any]], template_path: Path):
-    """保存模板到文件。"""
+    """保存模板到文件（带版本号）。"""
+    data = {
+        "version": TEMPLATE_VERSION,
+        "processors": processors,
+    }
     with open(template_path, "w", encoding="utf-8") as f:
-        json.dump(processors, f, indent=2, ensure_ascii=False)
+        json.dump(data, f, indent=2, ensure_ascii=False)

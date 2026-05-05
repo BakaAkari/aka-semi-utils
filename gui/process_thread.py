@@ -10,6 +10,8 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from core.template_builder import render_processors
 from processor.core import start_process
 
+import threading
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,11 +35,11 @@ class ProcessThread(QThread):
         self.processors = processors
         self.output_pattern = output_pattern
         self.override = override
-        self._cancelled = False
+        self._cancelled = threading.Event()
 
     def cancel(self):
         """请求取消（下个文件检查点会终止）。"""
-        self._cancelled = True
+        self._cancelled.set()
 
     def run(self):
         total = len(self.files)
@@ -45,7 +47,7 @@ class ProcessThread(QThread):
         fail_count = 0
 
         for idx, file_path in enumerate(self.files):
-            if self._cancelled:
+            if self._cancelled.is_set():
                 self.progress.emit(
                     int(idx / total * 100), "已取消"
                 )
@@ -104,9 +106,17 @@ class ProcessThread(QThread):
         stem = input_path.stem
 
         pattern = self.output_pattern
-        # 兼容旧模式变量
-        pattern = pattern.replace("{source_dir}", str(source_dir))
-        pattern = pattern.replace("{filename}", stem)
+        # 使用 str.format() 替代字符串替换，更规范且可扩展
+        pattern = pattern.replace("{", "{{").replace("}", "}}")
+        pattern = pattern.replace("{{source_dir}}", str(source_dir))
+        pattern = pattern.replace("{{filename}}", stem)
+        # 还原真实占位符
+        pattern = pattern.replace("{{", "{").replace("}}", "}")
+        
+        try:
+            pattern = pattern.format(source_dir=str(source_dir), filename=stem)
+        except (KeyError, IndexError):
+            pass  # 保留未知占位符原样
 
         # 如果以目录结尾（不含扩展名），追加 _logo.jpg
         if not Path(pattern).suffix:
