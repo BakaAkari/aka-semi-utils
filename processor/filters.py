@@ -262,10 +262,15 @@ class WatermarkFilter(FilterProcessor):
             if t_s and "height" not in t_s:
                 t_s["height"] = int(bottom_margin * .3)
 
-        left_top = start_process([ctx.get("left_top")])
-        left_bottom = start_process([ctx.get("left_bottom")])
-        right_top = start_process([ctx.get("right_top")])
-        right_bottom = start_process([ctx.get("right_bottom")])
+        def _process_corner(corner_cfg):
+            if corner_cfg is None:
+                return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+            return start_process([corner_cfg])
+
+        left_top = _process_corner(ctx.get("left_top"))
+        left_bottom = _process_corner(ctx.get("left_bottom"))
+        right_top = _process_corner(ctx.get("right_top"))
+        right_bottom = _process_corner(ctx.get("right_bottom"))
 
         # ── 自适应缩放：防止文本在窄画布下被裁剪 ──
         canvas_width = img.width + left_margin + right_margin
