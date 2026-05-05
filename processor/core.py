@@ -174,6 +174,10 @@ class ImageProcessor(ABC):
         # 注意：这里我们注册的是类本身，而不是实例
         # 需要创建一个临时实例来获取 name()，或者要求子类实现类方法/属性
         try:
+            # 跳过抽象基类（无法实例化或没有实现 name 的中间类）
+            import inspect
+            if inspect.isabstract(cls):
+                return
             # 尝试创建实例来获取 name
             # 注意：如果 __init__ 需要参数，这里可能会失败
             instance = cls()
