@@ -3,7 +3,12 @@
 Phase 6.1 / 6.2:
 - ``save_to_disk`` / ``load_from_disk`` 全字段持久化（含 corners / logo / advanced / custom_text）
 - 任意 ``*_changed`` 信号触发 300ms debounce 自动保存
-- 向后兼容旧 ``user.json``（仅含 template + output）
+- 向后兼容旧 ``user.json``（含 ``template`` 字段的旧版本会被忽略并丢弃）
+
+Phase 15：模板系统已完全拆除。
+- 移除 ``current_template`` 字段、``set_template()``、``template_changed`` 信号、``validate_template()``
+- 新增 ``state_reloaded`` 信号取代原 ``template_changed`` 的"外部全量替换"广播语义
+  （load_from_disk / reset_to_defaults / 任何外部一次性替换整组字段时发射）
 """
 
 from __future__ import annotations
@@ -211,7 +216,7 @@ class AppState(QObject):
     output_changed = pyqtSignal()               # 输出配置变更
     watermark_changed = pyqtSignal()            # 水印配置变更
     advanced_changed = pyqtSignal()             # 高级设置变更
-    template_changed = pyqtSignal(str)          # 模板切换
+    state_reloaded = pyqtSignal()               # 外部全量替换（load/reset/任何整组字段重置）
     progress_changed = pyqtSignal(int, str)     # 进度, 状态文字
 
     def __init__(self):
@@ -238,9 +243,6 @@ class AppState(QObject):
         # 输出配置
         self.output = OutputConfig()
 
-        # 模板
-        self.current_template: str = "default"
-
         # 处理状态（不持久化）
         self.is_processing: bool = False
         self.progress: int = 0
@@ -255,12 +257,13 @@ class AppState(QObject):
         self._save_timer.timeout.connect(self._do_autosave)
 
         # 把所有数据类信号汇聚到 debounce 定时器
+        # Phase 15：state_reloaded 是"全量替换"边沿信号，由 load/reset 主动触发；
+        # 不挂 autosave 因为它本身代表"刚从磁盘读入"或"刚 reset 后立即写盘"，重复写盘多余。
         for sig in (
             self.files_changed,
             self.output_changed,
             self.watermark_changed,
             self.advanced_changed,
-            self.template_changed,
         ):
             sig.connect(self._schedule_autosave)
 
@@ -270,7 +273,7 @@ class AppState(QObject):
 
         与 :meth:`add_files` 的区别：``set_files`` 是 replace 语义；``add_files``
         是 append 语义。GUI 用户操作（如 thumb_grid 的 ``add_files`` 信号）应通过
-        ``add_files``；外部全量替换（如模板加载、配置加载、reset）应通过 ``set_files``。
+        ``add_files``；外部全量替换（如配置加载、reset）应通过 ``set_files``。
         """
         self.selected_files = list(paths)
         self.files_changed.emit(self.selected_files)
@@ -320,12 +323,6 @@ class AppState(QObject):
         """设置高级配置。"""
         self.advanced = config
         self.advanced_changed.emit()
-
-    # ---- 模板 ----
-    def set_template(self, name: str):
-        """切换模板。"""
-        self.current_template = name
-        self.template_changed.emit(name)
 
     # ---- 处理状态 ----
     def set_processing(self, is_processing: bool, progress: int = 0, status: str = ""):
@@ -404,20 +401,20 @@ class AppState(QObject):
     def _emit_full_refresh(self) -> None:
         """发出全套数据类信号 — 用于"外部全量替换 AppState 字段"后通知所有 GUI 订阅者。
 
-        顺序：files → output → watermark → advanced → template
-        （template_changed 放最后是因为它会触发 ConfigPanel 整树重建，应当在原子字段就位后再发）
+        顺序：files → output → watermark → advanced → state_reloaded
+        （state_reloaded 放最后是因为它会触发 ConfigPanel 整树重建，应当在原子字段就位后再发）
         """
         self.files_changed.emit(self.selected_files)
         self.output_changed.emit()
         self.watermark_changed.emit()
         self.advanced_changed.emit()
-        self.template_changed.emit(self.current_template)
+        self.state_reloaded.emit()
 
     def _apply_loaded_data(self, data: dict[str, Any]) -> None:
-        """把磁盘 dict 反序列化到 AppState 字段（Phase 9：启动时过滤不存在文件）。"""
-        # 模板
-        self.current_template = data.get("template", "default") or "default"
+        """把磁盘 dict 反序列化到 AppState 字段。
 
+        Phase 15：旧版 user.json 里的 ``template`` 字段直接忽略（模板系统已移除）。
+        """
         # 输出
         self.output = _dc_from_dict(OutputConfig, data.get("output"))
 
@@ -457,9 +454,9 @@ class AppState(QObject):
         try:
             config_dir.mkdir(parents=True, exist_ok=True)
             # Phase 13：不持久化 selected_files —— 图像列表是会话级数据。
+            # Phase 15：不持久化模板字段（模板系统已移除）。
             data: dict[str, Any] = {
                 "version": USER_CONFIG_VERSION,
-                "template": self.current_template,
                 "output": _dc_to_dict(self.output),
                 "corners": {
                     "left_top": _corner_to_dict(self.left_top),
@@ -519,7 +516,6 @@ class AppState(QObject):
         self.custom_text = ""
         self.advanced = AdvancedConfig()
         self.output = OutputConfig()
-        self.current_template = "default"
         self.is_processing = False
         self.progress = 0
         self.status_text = "就绪"
@@ -537,21 +533,3 @@ class AppState(QObject):
                 self.save_to_disk(self._project_root)
             except Exception as e:
                 logger.warning("reset_to_defaults 保存失败: %s", e)
-
-    # ---- 模板验证 ----
-    def validate_template(self, template_path: Path) -> tuple[bool, str]:
-        """验证模板 JSON 是否合法。"""
-        try:
-            with open(template_path, encoding="utf-8") as f:
-                processors = json.load(f)
-            # 兼容 v1 信封 {"version": 1, "processors": [...]}
-            if isinstance(processors, dict) and "processors" in processors:
-                processors = processors["processors"]
-            if not isinstance(processors, list):
-                return False, "模板根节点必须是数组或包含 processors 字段的对象"
-            for p in processors:
-                if not isinstance(p, dict) or "processor_name" not in p:
-                    return False, "模板缺少 processor_name"
-            return True, ""
-        except Exception as e:
-            return False, str(e)

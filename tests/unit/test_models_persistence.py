@@ -1,11 +1,11 @@
 """Phase 6.1 — AppState 持久化测试。
 
 覆盖：
-- 全字段保存 (corners / logo / advanced / custom_text / output / template)
+- 全字段保存 (corners / logo / advanced / custom_text / output)
 - 全字段加载 + 类型还原
 - 缺失文件 → 默认值
 - 损坏 JSON → 默认值（不抛异常）
-- 老格式（仅 template + output）兼容加载
+- 老格式兼容加载（Phase 15：legacy ``template`` 字段被静默忽略）
 - 未知字段忽略
 - 部分字段缺失 → 默认值兜底
 """
@@ -56,13 +56,13 @@ def test_save_creates_file_with_all_sections(qapp, project_root):
     state.custom_text = "测试文本"
     state.advanced = AdvancedConfig(global_font="Roboto-Bold.ttf", quality=88, blur_radius=12)
     state.output = OutputConfig(path="/tmp/out", override=False)
-    state.current_template = "标准水印"
 
     assert state.save_to_disk(project_root) is True
 
     data = json.loads(_user_json(project_root).read_text(encoding="utf-8"))
     assert data["version"] == USER_CONFIG_VERSION
-    assert data["template"] == "标准水印"
+    # Phase 15：模板系统已移除，user.json 不再包含 template 字段
+    assert "template" not in data
     assert data["output"] == {"path": "/tmp/out", "override": False}
     assert data["corners"]["left_top"]["fields"] == ["相机型号", "镜头型号"]
     assert data["corners"]["left_top"]["color"] == "#FF0000"
@@ -113,14 +113,12 @@ def test_load_full_roundtrip(qapp, project_root, tmp_path):
     src.custom_text = "hello"
     src.advanced = AdvancedConfig(quality=70, ratio_enabled=True, ratio="16:9")
     src.output = OutputConfig(path="/o", override=False)
-    src.current_template = "tpl"
     src.selected_files = [str(real1), str(real2)]
     src.save_to_disk(project_root)
 
     dst = AppState()
     assert dst.load_from_disk(project_root) is True
 
-    assert dst.current_template == "tpl"
     assert dst.left_top.fields == ["A", "B"]
     assert dst.left_top.separator == "-"
     assert dst.left_top.color == "#AAA"
@@ -174,7 +172,6 @@ def test_selected_files_never_persisted(qapp, project_root, tmp_path):
 def test_load_missing_file_uses_defaults(qapp, project_root):
     state = AppState()
     assert state.load_from_disk(project_root) is False
-    assert state.current_template == "default"
     assert state.left_top.fields == []
     assert state.advanced.quality == 95
 
@@ -184,11 +181,14 @@ def test_load_corrupt_json_uses_defaults(qapp, project_root):
     state = AppState()
     assert state.load_from_disk(project_root) is False
     # 不抛异常，回退默认
-    assert state.current_template == "default"
+    assert state.left_top.fields == []
 
 
 def test_load_legacy_format_compat(qapp, project_root):
-    """老格式：只有 template + output，无 version / corners 等。"""
+    """老格式：只有 template + output，无 version / corners 等。
+
+    Phase 15：legacy ``template`` 字段被静默忽略，``output`` 仍正常加载。
+    """
     _user_json(project_root).write_text(
         json.dumps({
             "template": "old_template",
@@ -198,7 +198,6 @@ def test_load_legacy_format_compat(qapp, project_root):
     )
     state = AppState()
     assert state.load_from_disk(project_root) is True
-    assert state.current_template == "old_template"
     assert state.output.path == "/legacy"
     # 缺失字段走默认
     assert state.left_top.fields == []

@@ -24,19 +24,17 @@ from PyQt6.QtWidgets import (
 from .advanced_panel import AdvancedPanel
 from .config_panel import ConfigPanel
 from .error_presenter import BatchSummary, PresentedError, Severity
-from .json_editor_panel import JsonEditorPanel
 from .models import AppState
 from .preview_panel import PreviewPanel
 from .process_thread import ProcessThread
 from .styles import get_stylesheet
 from .template_assembler import state_to_processors
-from .template_manager import TemplateManager
 from .thumb_grid import ThumbContainer
 
 
 class CollapsibleConfigPanel(QFrame):
-    """可折叠配置抽屉 — 包含三大 Tab。"""
-    
+    """可折叠配置抽屉 — 包含三大 Tab（Phase 15：移除模板/JSON Tab）。"""
+
     def __init__(self, state: AppState, project_root: Path, parent=None, expanded: bool = True):
         super().__init__(parent)
         self.state = state
@@ -96,28 +94,15 @@ class CollapsibleConfigPanel(QFrame):
         
         self.advanced_panel = AdvancedPanel(self.state)
         self.tabs.addTab(self.advanced_panel, "高级设置")
-        
-        self.template_manager = TemplateManager(self.state, self.project_root)
-        self.template_manager.template_applied.connect(self._on_template_applied)
-        self.tabs.addTab(self.template_manager, "模板")
 
-        # Phase 6.8：JSON 双向同步编辑器（高级用户）
-        self.json_editor = JsonEditorPanel(self.state)
-        self.tabs.addTab(self.json_editor, "JSON")
-        
         content_layout.addWidget(self.tabs)
         layout.addWidget(self.content)
-    
+
     def _toggle(self):
         self._expanded = not self._expanded
         self.content.setVisible(self._expanded)
         self.header.setText("▼ 高级配置" if self._expanded else "▶ 高级配置")
-    
-    def _on_template_applied(self, name: str):
-        # Phase 9：AdvancedPanel 已自订阅 advanced_changed，模板套用后会经
-        # AppState.advanced_changed → AdvancedPanel._load_state 自动同步，无需在此手动刷新。
-        pass
-    
+
     def setEnabled(self, enabled: bool):
         self.content.setEnabled(enabled)
         # 标题栏保持可点击
@@ -268,14 +253,7 @@ class MainWindow(QMainWindow):
         path = QFileDialog.getExistingDirectory(self, "选择输出目录")
         if path:
             self.output_input.setText(path)
-    
-    def _on_template_applied(self, name: str):
-        """模板应用后短提示（Phase 9：AdvancedPanel/ConfigPanel 都已自订阅相关信号，
-        无需在此手动刷新，且原 ``self.advanced_panel`` 属性根本不存在 —— 已修复）。"""
-        # 用主窗口 statusBar 显示 5 秒短提示，比 modal 对话框友好
-        with contextlib.suppress(Exception):
-            self.statusBar().showMessage(f"✓ 已应用模板：{name}", 5000)
-    
+
     def _on_start(self):
         """开始处理 — 启动真实处理线程。"""
         if not self.app_state.selected_files:

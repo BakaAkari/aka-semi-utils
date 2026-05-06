@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "template": "右下角参数",
   "output": {
     "path": "{source_dir}/logo",
     "override": true
@@ -52,14 +51,14 @@
     }
   },
   "logo": {
-    "enabled": "auto",
+    "enabled": "custom",
     "position": "right",
     "color": "#D8D8D6",
-    "custom_path": "/Users/baka_akari/Downloads/Fujifilm-Logo-1934.jpg"
+    "custom_path": "/Users/baka_akari/Downloads/20260506-133218.jpeg"
   },
   "custom_text": "",
   "advanced": {
-    "global_font": "Roboto-Bold.ttf",
+    "global_font": "NotoSansCJKsc-Bold.otf",
     "global_color": "#242424",
     "corner_text_height_px": 0,
     "footer_height_px": 0,

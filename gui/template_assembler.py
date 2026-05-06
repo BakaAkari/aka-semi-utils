@@ -1,13 +1,11 @@
-"""模板组装器 — GUI 状态与 Processor JSON 双向转换。
+"""模板组装器 — GUI 状态 → Processor JSON 的正向转换器。
 
-Phase 6.4 重构：字段映射全部走 :mod:`gui.field_registry`，
-不再在本文件硬编码 ``_FIELD_TEMPLATES`` / ``_REVERSE_FIELD_MAP``。
+Phase 15：模板系统已移除，本模块只保留 START 按钮所需的"AppState → 处理器列表"正向流。
+反向流（processors_to_state / _apply_watermark_config / load_template / save_template）
+连同模板文件加载、JSON 双向编辑器一同被删除，不再需要。
 """
 
-import contextlib
-import json
 import logging
-from pathlib import Path
 from typing import Any
 
 from .field_registry import get_default_registry
@@ -71,14 +69,14 @@ PROCESSOR_MAP: dict[str, dict[str, Any]] = {
 
 
 def state_to_processors(state: AppState) -> list[dict[str, Any]]:
-    """AppState → Processor JSON 列表（正向转换）。"""
+    """AppState → Processor JSON 列表（正向转换，仅用于 START 按钮）。"""
     processors = []
-    
+
     for key, mapping in PROCESSOR_MAP.items():
         processor_name = mapping["processor_name"]
         target = mapping["target"]
         fields = mapping["fields"]
-        
+
         if target == "advanced":
             # 从 AdvancedConfig 读取字段
             config = state.advanced
@@ -87,7 +85,7 @@ def state_to_processors(state: AppState) -> list[dict[str, Any]]:
                 value = getattr(config, field, None)
                 if value is not None:
                     params[field] = value
-            
+
             # 跳过默认值（避免无意义处理器）
             if key == "margin" and all(params.get(f"{d}_margin", 0) == 0 for d in ["left", "right", "top", "bottom"]):
                 continue
@@ -109,13 +107,13 @@ def state_to_processors(state: AppState) -> list[dict[str, Any]]:
             if key == "alignment" and params.get("alignment_mode", "center") == "center":
                 # 默认 center，不生成处理器
                 continue
-            
+
             if params:
                 processors.append({
                     "processor_name": processor_name,
                     **params,
                 })
-        
+
         elif target == "watermark":
             # 构建水印处理器（WatermarkFilter）
             watermark_config = _build_watermark_config(state)
@@ -124,41 +122,8 @@ def state_to_processors(state: AppState) -> list[dict[str, Any]]:
                     "processor_name": processor_name,
                     **watermark_config,
                 })
-    
+
     return processors
-
-
-def processors_to_state(processors: list[dict[str, Any]], state: AppState):
-    """Processor JSON 列表 → AppState（反向转换）。
-
-    Phase 10.1 (P2)：信号契约修正 —— 该函数会改写 watermark / advanced **以及**通过
-    上游 ``set_template`` 间接影响的"当前模板"语义。即便调用方再调一次 ``set_template``
-    也不影响幂等，但本函数缺失 ``template_changed.emit`` 会让"只调 processors_to_state
-    不调 set_template"的隐藏路径破坏订阅者刷新；现统一发齐三个信号，杜绝失同步。
-    """
-    for processor in processors:
-        name = processor.get("processor_name", "")
-
-        # 查找对应的映射
-        for _key, mapping in PROCESSOR_MAP.items():
-            if mapping["processor_name"] == name:
-                target = mapping["target"]
-                fields = mapping["fields"]
-
-                if target == "advanced":
-                    for field in fields:
-                        if field in processor:
-                            setattr(state.advanced, field, processor[field])
-
-                elif target == "watermark":
-                    _apply_watermark_config(processor, state)
-
-                break
-
-    # 发射信号通知更新（Phase 10.1：补 template_changed 让信号契约自洽）
-    state.watermark_changed.emit()
-    state.advanced_changed.emit()
-    state.template_changed.emit(state.current_template)
 
 
 def _resolve_chip_style(
@@ -304,193 +269,3 @@ def _build_watermark_config(state: AppState) -> dict[str, Any]:
         config["center_logo_height"] = state.advanced.logo_height_px
 
     return config
-
-
-def _is_separator_text(t: str) -> bool:
-    """识别 multi_rich_text 中由 :func:`_build_watermark_config` 生成的分隔符片段。"""
-    if not t:
-        return False
-    stripped = t.strip()
-    if stripped == "" or stripped == "·":
-        return True
-    # 形如 ' · '（前后带空格）
-    return bool(t.startswith(" ") and t.endswith(" ") and len(stripped) <= 3)
-
-
-def _segment_to_chip(seg: dict[str, Any], state: AppState) -> FieldChip | None:
-    """把模板 segment 还原为 :class:`FieldChip`（含字体色继承推断）。"""
-    registry = get_default_registry()
-    text = seg.get("text", "")
-    if not text:
-        return None
-    fdef = registry.get_by_jinja(text)
-    if fdef is None:
-        # 视为自定义文本
-        return FieldChip(
-            field_id="custom_text",
-            custom_text=text,
-            font=seg.get("font_path", ""),
-            color=seg.get("color", ""),
-        )
-    return FieldChip(
-        field_id=fdef.field_id,
-        font=seg.get("font_path", ""),
-        color=seg.get("color", ""),
-    )
-
-
-def _apply_watermark_config(processor: dict[str, Any], state: AppState):
-    """从处理器配置还原到 AppState（读取嵌套格式）。
-
-    Phase 6.4：使用 :class:`FieldRegistry` 反查；输出同时填充 ``chips`` 与
-    向后兼容的 ``fields`` 中文标签列表。
-    """
-    registry = get_default_registry()
-
-    for corner, attr in [
-        ("left_top", "left_top"),
-        ("left_bottom", "left_bottom"),
-        ("right_top", "right_top"),
-        ("right_bottom", "right_bottom"),
-    ]:
-        if corner not in processor:
-            continue
-
-        corner_cfg: CornerConfig = getattr(state, attr)
-        corner_data = processor.get(corner, {})
-        pn = corner_data.get("processor_name", "")
-
-        chips: list[FieldChip] = []
-        if pn == "rich_text":
-            text = corner_data.get("text", "")
-            if text:
-                fdef = registry.get_by_jinja(text)
-                if fdef is not None:
-                    chips.append(FieldChip(
-                        field_id=fdef.field_id,
-                        font=corner_data.get("font_path", ""),
-                        color=corner_data.get("color", ""),
-                    ))
-                else:
-                    # 自定义文本
-                    state.custom_text = text
-                    chips.append(FieldChip(
-                        field_id="custom_text",
-                        custom_text=text,
-                        font=corner_data.get("font_path", ""),
-                        color=corner_data.get("color", ""),
-                    ))
-        elif pn == "multi_rich_text":
-            for seg in corner_data.get("text_segments", []):
-                t = seg.get("text", "")
-                if _is_separator_text(t):
-                    continue
-                chip = _segment_to_chip(seg, state)
-                if chip is not None:
-                    chips.append(chip)
-
-        # 写回（同步更新中文 fields 兼容字段）
-        corner_cfg.chips = chips
-        corner_cfg.fields = []
-        for chip in chips:
-            fdef = registry.get(chip.field_id)
-            corner_cfg.fields.append(fdef.label_zh if fdef else "")
-
-        # 旧扁平格式向后兼容（v1 之前的模板）
-        if not chips and f"{corner}_field" in processor:
-            corner_cfg.fields = processor.get(f"{corner}_field", [])
-            corner_cfg.separator = processor.get(f"{corner}_separator", " · ")
-            corner_cfg.font = processor.get(f"{corner}_font", "")
-            corner_cfg.color = processor.get(f"{corner}_color", "")
-            # 同步生成 chips
-            corner_cfg.chips = [
-                FieldChip(
-                    field_id=(registry.get_by_label(lbl) or registry.get_by_label("空")).field_id
-                ) for lbl in corner_cfg.fields
-            ]
-    
-    # Logo — 从嵌套格式读取（right_logo / center_logo / left_logo）
-    logo = state.logo
-    if "right_logo" in processor or "center_logo" in processor or "left_logo" in processor:
-        logo.enabled = "auto"
-        if "right_logo" in processor:
-            logo.position = "right"
-        elif "center_logo" in processor:
-            logo.position = "center"
-        elif "left_logo" in processor:
-            logo.position = "left"
-        logo.color = processor.get("delimiter_color", "#FFFFFF")
-        # 检查是否是自定义路径（非 Jinja2 表达式）
-        for pos in ["right_logo", "center_logo", "left_logo"]:
-            if pos in processor:
-                val = processor[pos]
-                if val and not val.startswith("{{"):
-                    logo.enabled = "custom"
-                    logo.custom_path = val
-                break
-    elif "logo_enable" in processor:
-        # 旧格式向后兼容
-        state.logo.enabled = "auto"
-        state.logo.position = processor.get("logo_position", "right")
-        state.logo.color = processor.get("logo_color", "#FFFFFF")
-        if "logo_custom_path" in processor:
-            state.logo.enabled = "custom"
-            state.logo.custom_path = processor["logo_custom_path"]
-    else:
-        state.logo.enabled = "disabled"
-    
-    # 自定义文本
-    state.custom_text = processor.get("custom_text", "")
-
-    # Phase 11：从模板还原"固定像素尺寸"到 AdvancedConfig
-    # 字段缺省时保持当前值（默认 0 即自适应）。
-    adv = state.advanced
-    if "bottom_margin" in processor:
-        with contextlib.suppress(TypeError, ValueError):
-            adv.footer_height_px = int(processor["bottom_margin"])
-    if "center_logo_height" in processor:
-        with contextlib.suppress(TypeError, ValueError):
-            adv.logo_height_px = int(processor["center_logo_height"])
-    # 角落 height 取所有非空 corner 的最大值（多角落不一致时统一向上对齐）
-    corner_heights: list[int] = []
-    for corner in ("left_top", "left_bottom", "right_top", "right_bottom"):
-        cd = processor.get(corner)
-        if isinstance(cd, dict) and "height" in cd:
-            try:
-                corner_heights.append(int(cd["height"]))
-            except (TypeError, ValueError):
-                continue
-    if corner_heights:
-        adv.corner_text_height_px = max(corner_heights)
-
-
-TEMPLATE_VERSION = 1
-
-
-def load_template(template_path: Path) -> list[dict[str, Any]]:
-    """从文件加载模板（支持版本号校验）。"""
-    with open(template_path, encoding="utf-8") as f:
-        data = json.load(f)
-    
-    # 如果是带版本号的包装格式，解包
-    if isinstance(data, dict) and "version" in data:
-        if data.get("version") != TEMPLATE_VERSION:
-            logger.warning(
-                f"模板版本不匹配: 文件={data.get('version')}, "
-                f"当前={TEMPLATE_VERSION}"
-            )
-        return data.get("processors", [])
-    # 兼容旧格式（纯数组）
-    if isinstance(data, list):
-        return data
-    return []
-
-
-def save_template(processors: list[dict[str, Any]], template_path: Path):
-    """保存模板到文件（带版本号）。"""
-    data = {
-        "version": TEMPLATE_VERSION,
-        "processors": processors,
-    }
-    with open(template_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)

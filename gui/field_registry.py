@@ -147,7 +147,7 @@ class FieldRegistry:
         return self._by_source.get(source_id)
 
     def get_by_jinja(self, jinja_template: str) -> FieldDef | None:
-        """按 Jinja 模板字符串反查（用于 ``_apply_watermark_config`` 反序列化）。"""
+        """按 Jinja 模板字符串反查（保留作通用反查 API；Phase 15 模板系统已移除，无内部调用）。"""
         for f in self._fields:
             if f.jinja_template and f.jinja_template == jinja_template:
                 return f

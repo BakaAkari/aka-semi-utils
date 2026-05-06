@@ -404,7 +404,12 @@ class WatermarkFilter(FilterProcessor):
         params: dict,
         footer_start_y: int,
     ) -> int:
-        """粘贴主图 + 左 logo（正方形，吃满 footer 高度），返回 left_logo_width。"""
+        """粘贴主图 + 左 logo（按 footer 高度等比缩放，不压扁），返回实际渲染宽度。
+
+        Phase 14（方案 C）：左 logo 改为按高度等比缩放，宽度由原图比例决定，
+        不再强制压成正方形。返回值 left_logo_width 喂给 _compute_text_layout，
+        让左侧文本起始 X 坐标自动避开可变宽度的 logo。
+        """
         canvas.paste(
             img,
             (params["left_margin"], params["top_margin"]),
@@ -412,14 +417,19 @@ class WatermarkFilter(FilterProcessor):
         )
         if not left_logo:
             return 0
-        logo_size = canvas.height - footer_start_y
-        left_logo = left_logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+        logo_height = canvas.height - footer_start_y
+        if left_logo.height > 0:
+            scale = logo_height / left_logo.height
+            target_w = max(1, round(left_logo.width * scale))
+        else:
+            target_w = logo_height
+        left_logo = left_logo.resize((target_w, logo_height), Image.Resampling.LANCZOS)
         canvas.paste(
             left_logo,
             (params["left_margin"], footer_start_y),
             mask=left_logo if left_logo.mode == "RGBA" else None,
         )
-        return logo_size
+        return left_logo.width
 
     def _paste_center_logo(
         self,
@@ -522,11 +532,16 @@ class WatermarkFilter(FilterProcessor):
         elem_height: int,
         common_spacing: int,
     ) -> None:
-        """粘贴右 logo + 与文本之间的分隔线。"""
-        logo_size = elem_height
+        """粘贴右 logo + 与文本之间的分隔线。
+
+        Phase 14（方案 C）：右 logo 按高度等比缩放（高度 = ``elem_height``），
+        宽度由原图比例决定；右 logo X 坐标根据**实际渲染宽度**反推，让横长 logo
+        也能完整显示。分隔线高度仍以 elem_height 为基准（与文本块高度匹配）。
+        """
+        logo_height = elem_height
         delimiter = Image.new(
             "RGBA",
-            (params["delimiter_width"], int(logo_size * 1.1)),
+            (params["delimiter_width"], int(logo_height * 1.1)),
             params["delimiter_color"],
         )
         rt, rb = corners["right_top"], corners["right_bottom"]
@@ -537,11 +552,17 @@ class WatermarkFilter(FilterProcessor):
             - 2 * common_spacing
             - delimiter.width
         )
-        delimiter_y = int(footer_start_y + elem_margin - logo_size * 0.05)
+        delimiter_y = int(footer_start_y + elem_margin - logo_height * 0.05)
         canvas.paste(delimiter, (delimiter_x, delimiter_y), mask=delimiter)
 
-        right_logo = right_logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
-        right_logo_x = delimiter_x - common_spacing - logo_size
+        # 等比缩放：宽度 = round(orig_w * target_h / orig_h)
+        if right_logo.height > 0:
+            scale = logo_height / right_logo.height
+            target_w = max(1, round(right_logo.width * scale))
+        else:
+            target_w = logo_height
+        right_logo = right_logo.resize((target_w, logo_height), Image.Resampling.LANCZOS)
+        right_logo_x = delimiter_x - common_spacing - right_logo.width
         right_logo_y = footer_start_y + elem_margin
         canvas.paste(
             right_logo,

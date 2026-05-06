@@ -12,8 +12,8 @@
 
 3. **不订阅自己的写** —— 控件改 state 后，通过 :meth:`AppState.set_corner_config`
    写回（触发 ``watermark_changed`` 用于 autosave + 预览刷新），但本面板**不订阅**
-   ``watermark_changed`` 进行 reload。仅订阅 ``template_changed`` 这种"外部全量替换"
-   信号做整树重建。
+   ``watermark_changed`` 进行 reload。仅订阅 ``state_reloaded`` 这种"外部全量替换"
+   信号（load_from_disk / reset_to_defaults）做整树重建。
 
 4. **没有 commit / reload 往返** —— 因此也就没有 ``_committing`` / ``_suppress_reload``
    等 flag，没有 ``setParent(None)`` workaround，没有 ``deleteLater`` 时序问题。
@@ -461,8 +461,8 @@ class CornerSection(QFrame):
     def _rebuild_from_state(self) -> None:
         """根据 :attr:`corner` 重建所有 chip 行 + 标题 + 控制行。
 
-        本方法仅在 :class:`ConfigPanel` 收到 ``template_changed`` 等"外部全量替换"
-        信号时被调用。日常用户操作不走此路径。
+        本方法仅在 :class:`ConfigPanel` 收到 ``state_reloaded``（外部全量替换：
+        load_from_disk / reset_to_defaults）信号时被调用。日常用户操作不走此路径。
         """
         # 清空旧 chip 行
         while self.chips_layout.count():
@@ -778,7 +778,7 @@ class ConfigPanel(QWidget):
     - Tab "Logo"：:class:`LogoTab`
 
     本面板**不订阅** ``state.watermark_changed``，因此用户编辑不会触发重入式重建。
-    仅订阅 ``state.template_changed``（外部全量替换）做整树重建。
+    仅订阅 ``state.state_reloaded``（外部全量替换：load/reset）做整树重建。
     """
 
     CORNER_ATTRS: ClassVar[list[str]] = CORNER_ORDER
@@ -791,7 +791,7 @@ class ConfigPanel(QWidget):
         self._setup_ui()
 
         # 仅订阅"外部全量替换"信号；不订阅 watermark_changed（避免自激发循环）
-        self.state.template_changed.connect(self._reload_all_from_state)
+        self.state.state_reloaded.connect(self._reload_all_from_state)
 
     # ---- UI ----
 
@@ -834,7 +834,7 @@ class ConfigPanel(QWidget):
     # ---- 外部触发的整树重建 ----
 
     def _reload_all_from_state(self, *_args) -> None:
-        """模板应用 / reset_to_defaults 等外部全量替换后整体重建 UI。"""
+        """``load_from_disk`` / ``reset_to_defaults`` 等外部全量替换后整体重建 UI。"""
         for section in self._sections.values():
             section._rebuild_from_state()
         self.logo_tab._load_state()

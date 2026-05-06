@@ -7,9 +7,7 @@ __all__ = [
     "FontPreview",
     "LogoDialog",
     "MainWindow",
-    "TemplateManager",
     "ThumbContainer",
     "get_stylesheet",
-    "processors_to_state",
     "state_to_processors",
 ]
