@@ -1,9 +1,6 @@
 {
   "version": 2,
   "template": "右下角参数",
-  "selected_files": [
-    "/Users/baka_akari/Pictures/Fuji/DSCF0021_5月.jpg"
-  ],
   "output": {
     "path": "{source_dir}/logo",
     "override": true
@@ -62,18 +59,18 @@
   },
   "custom_text": "",
   "advanced": {
-    "global_font": "NotoSansCJKsc-Bold.otf",
+    "global_font": "Roboto-Bold.ttf",
     "global_color": "#242424",
     "corner_text_height_px": 0,
     "footer_height_px": 0,
     "logo_height_px": 0,
-    "left_margin": 25,
-    "right_margin": 25,
-    "top_margin": 25,
-    "bottom_margin": 25,
+    "left_margin": 20,
+    "right_margin": 20,
+    "top_margin": 20,
+    "bottom_margin": 20,
     "margin_color": "#FFFFFF",
-    "border_radius": 20,
-    "shadow_radius": 20,
+    "border_radius": 0,
+    "shadow_radius": 0,
     "shadow_color": "#000000",
     "quality": 95,
     "subsampling": 0,

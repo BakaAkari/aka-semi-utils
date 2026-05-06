@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import asdict, dataclass, field
 from dataclasses import fields as dc_fields
 from pathlib import Path
@@ -20,30 +18,6 @@ from typing import Any
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 logger = logging.getLogger(__name__)
-
-
-def _path_exists_with_timeout(path: str, timeout_sec: float = 0.3) -> bool | None:
-    """带超时的 :meth:`Path.exists`（Phase 10.1 P4）。
-
-    在断开的网络盘上 ``Path.exists`` 可能阻塞数十秒，让启动卡住。这里用
-    一次性 ``ThreadPoolExecutor`` 隔离阻塞调用并设短超时。
-
-    Returns:
-        ``True``  — 文件存在；
-        ``False`` — 文件确认不存在；
-        ``None``  — 超时或访问错误（调用方自行决定丢弃 / 保留 / 警告）。
-    """
-    def _check() -> bool:
-        return Path(path).exists()
-
-    with ThreadPoolExecutor(max_workers=1) as ex:
-        future = ex.submit(_check)
-        try:
-            return future.result(timeout=timeout_sec)
-        except FuturesTimeoutError:
-            return None
-        except OSError:
-            return None
 
 
 # Phase 6 user.json 版本号；老格式（无 version 字段）按 v1 兼容处理
@@ -447,38 +421,10 @@ class AppState(QObject):
         # 输出
         self.output = _dc_from_dict(OutputConfig, data.get("output"))
 
-        # 文件列表 — Phase 9：保留持久化以便重启恢复编辑会话，**启动时过滤掉不存在的文件**
-        # 避免"内部记着 4 张幽灵文件、UI 却显示空状态"的失同步局面。
-        # Phase 10.1 (P4)：网络盘断开时 ``Path.exists()`` 可阻塞数十秒；改用线程 + 超时。
-        files = data.get("selected_files", [])
-        valid_files: list[str] = []
-        dropped: list[str] = []
-        timeout_paths: list[str] = []
-        for p in files:
-            if not isinstance(p, str):
-                continue
-            status = _path_exists_with_timeout(p, timeout_sec=0.3)
-            if status is True:
-                valid_files.append(p)
-            elif status is False:
-                dropped.append(p)
-            else:  # None — 超时或访问错误
-                timeout_paths.append(p)
-        self.selected_files = valid_files
-        if dropped:
-            logger.info(
-                "selected_files 启动过滤：丢弃 %d 个不存在的文件 (%s%s)",
-                len(dropped),
-                ", ".join(Path(p).name for p in dropped[:3]),
-                "..." if len(dropped) > 3 else "",
-            )
-        if timeout_paths:
-            logger.warning(
-                "selected_files 启动过滤：%d 个路径访问超时（可能是离线网络盘），已丢弃 (%s%s)",
-                len(timeout_paths),
-                ", ".join(Path(p).name for p in timeout_paths[:3]),
-                "..." if len(timeout_paths) > 3 else "",
-            )
+        # 文件列表 — Phase 13：不再持久化图像列表，每次启动都是空列表。
+        # 旧版会保留 selected_files 并在启动时过滤不存在的路径；现已废弃该契约。
+        # 即便磁盘里残留旧字段也忽略，确保会话边界干净。
+        self.selected_files = []
 
         # 四角配置（含 Phase 6.3 chips 反序列化）
         corners = data.get("corners", {}) if isinstance(data.get("corners"), dict) else {}
@@ -510,10 +456,10 @@ class AppState(QObject):
         config_path = config_dir / "user.json"
         try:
             config_dir.mkdir(parents=True, exist_ok=True)
+            # Phase 13：不持久化 selected_files —— 图像列表是会话级数据。
             data: dict[str, Any] = {
                 "version": USER_CONFIG_VERSION,
                 "template": self.current_template,
-                "selected_files": list(self.selected_files),
                 "output": _dc_to_dict(self.output),
                 "corners": {
                     "left_top": _corner_to_dict(self.left_top),

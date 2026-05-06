@@ -129,8 +129,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("极简水印")
-        self.setMinimumSize(450, 550)
-        self.resize(500, 600)
+        # Phase 13：默认高度统一 +50px，给缩略图 2 行 + 居中布局留更舒展的视觉空间
+        self.setMinimumSize(450, 600)
+        self.resize(500, 650)
 
         # 项目根目录
         self.project_root = Path(__file__).parent.parent

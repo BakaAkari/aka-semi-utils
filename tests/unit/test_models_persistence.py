@@ -99,8 +99,8 @@ def test_save_without_project_root_returns_false(qapp):
 # -------- 加载 --------
 
 def test_load_full_roundtrip(qapp, project_root, tmp_path):
-    """Phase 9：``selected_files`` 持久化但启动过滤不存在的文件 — 用真实文件验证保留路径。"""
-    # 准备两张真实存在的图片，避免被启动过滤逻辑剔除
+    """Phase 13：除 ``selected_files`` 外所有字段全字段往返；图像列表不持久化。"""
+    # 准备两张真实存在的图片（仅用于设置源 state，实际不应回写到磁盘）
     real1 = tmp_path / "img1.jpg"
     real1.write_bytes(b"\xff\xd8\xff\xd9")
     real2 = tmp_path / "img2.jpg"
@@ -131,22 +131,44 @@ def test_load_full_roundtrip(qapp, project_root, tmp_path):
     assert dst.advanced.ratio_enabled is True
     assert dst.output.path == "/o"
     assert dst.output.override is False
-    assert dst.selected_files == [str(real1), str(real2)]
+    # Phase 13 新契约：图像列表不持久化，每次启动都是空列表
+    assert dst.selected_files == []
 
 
-def test_load_filters_nonexistent_selected_files(qapp, project_root, tmp_path):
-    """Phase 9 新契约：磁盘里存的不存在文件路径，加载后应被丢弃，仅保留真实存在的。"""
+def test_selected_files_never_persisted(qapp, project_root, tmp_path):
+    """Phase 13 新契约：图像列表是会话级数据，无论保存前列表多长，重新加载后必为空。
+
+    覆盖两个层面：
+    1. ``save_to_disk`` 不写入 ``selected_files`` 字段；
+    2. ``_apply_loaded_data`` 即便遇到旧版残留的 ``selected_files``，也强制忽略。
+    """
     real = tmp_path / "exists.jpg"
     real.write_bytes(b"\xff\xd8\xff\xd9")
 
+    # 1. 正常保存 → 加载 → selected_files 为空
     src = AppState()
-    src.selected_files = [str(real), "/img/ghost.jpg", "/already/deleted.png"]
+    src.selected_files = [str(real), "/img/ghost.jpg"]
     src.save_to_disk(project_root)
 
     dst = AppState()
     assert dst.load_from_disk(project_root) is True
-    # 仅保留真实存在的文件
-    assert dst.selected_files == [str(real)]
+    assert dst.selected_files == []
+
+    # 2. 旧版残留：手动注入 selected_files 进 user.json，加载后仍应为空
+    config_path = project_root / "config" / "user.json"
+    import json as _json
+    raw = _json.loads(config_path.read_text(encoding="utf-8"))
+    raw["selected_files"] = [str(real), "/legacy/path.jpg"]
+    config_path.write_text(_json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    dst2 = AppState()
+    assert dst2.load_from_disk(project_root) is True
+    assert dst2.selected_files == []
+
+    # 同时确认保存出去的 user.json 不再含 selected_files 字段
+    dst2.save_to_disk(project_root)
+    saved = _json.loads(config_path.read_text(encoding="utf-8"))
+    assert "selected_files" not in saved
 
 
 def test_load_missing_file_uses_defaults(qapp, project_root):
