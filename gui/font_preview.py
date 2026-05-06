@@ -1,10 +1,10 @@
 """字体预览组件 — 用 PIL 生成实时预览图。"""
 
-from PyQt6.QtWidgets import QLabel
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QImage
-
 from PIL import Image, ImageDraw, ImageFont
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtWidgets import QLabel
+
 from core.font_manager import resolve_font
 
 

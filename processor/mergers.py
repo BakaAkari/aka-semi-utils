@@ -1,10 +1,9 @@
 import json
 from abc import ABC
-from typing import List
 
 from PIL import Image
 
-from processor.core import ImageProcessor, Direction, PipelineContext
+from processor.core import Direction, ImageProcessor, PipelineContext, register
 from processor.types import Alignment
 
 
@@ -22,13 +21,16 @@ def _calc_offset(size: int, max_size: int, alignment: Alignment) -> int:
 
 
 class Merger(ImageProcessor, ABC):
+    processor_category = "merger"
+
     def category(self) -> str:
         return "merger"
 
 
+@register("alignment")
 class AlignmentMerger(Merger):
     def process(self, ctx: PipelineContext):
-        buffer: List[Image] = ctx.get_buffer()
+        buffer: list[Image] = ctx.get_buffer()
         horizontal_alignment = ctx.getenum("horizontal_alignment", Alignment.CENTER, Alignment)
         vertical_alignment = ctx.getenum("vertical_alignment", Alignment.CENTER, Alignment)
         background: tuple = ctx.getcolor("background", (255, 255, 255, 0))  # 默认透明
@@ -53,7 +55,7 @@ class AlignmentMerger(Merger):
         if weights:
             missing_count = len(buffer) - len(weights)
             weights = weights + [0] * missing_count
-            combined = zip(weights, buffer)
+            combined = zip(weights, buffer, strict=False)
             sorted_combined = sorted(combined, key=lambda x: x[0], reverse=True)
             buffer = [item for _, item in sorted_combined]
 
@@ -79,6 +81,7 @@ class AlignmentMerger(Merger):
         return "alignment"
 
 
+@register("concat")
 class ConcatMerger(Merger):
     def process(self, ctx: PipelineContext):
         buffer = ctx.get_buffer()

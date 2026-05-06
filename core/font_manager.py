@@ -1,6 +1,5 @@
 """字体管理器 — 扫描 fonts 目录、生成预览、加载字体（带回退）。"""
 
-import io
 import logging
 from pathlib import Path
 

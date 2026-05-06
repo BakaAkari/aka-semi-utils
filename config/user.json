@@ -1,7 +1,92 @@
 {
-  "template": "default",
+  "version": 2,
+  "template": "右下角参数",
+  "selected_files": [
+    "/Users/baka_akari/Pictures/Fuji/DSCF0021_5月.jpg"
+  ],
   "output": {
     "path": "{source_dir}/logo",
     "override": true
+  },
+  "corners": {
+    "left_top": {
+      "chips": [
+        {
+          "field_id": "camera_model",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        }
+      ],
+      "fields": [
+        "相机型号"
+      ],
+      "separator": " · ",
+      "font": "",
+      "color": ""
+    },
+    "left_bottom": {
+      "chips": [
+        {
+          "field_id": "lens_model",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        }
+      ],
+      "fields": [],
+      "separator": " · ",
+      "font": "",
+      "color": ""
+    },
+    "right_top": {
+      "chips": [],
+      "fields": [],
+      "separator": " · ",
+      "font": "",
+      "color": ""
+    },
+    "right_bottom": {
+      "chips": [],
+      "fields": [],
+      "separator": " · ",
+      "font": "",
+      "color": ""
+    }
+  },
+  "logo": {
+    "enabled": "auto",
+    "position": "right",
+    "color": "#D8D8D6",
+    "custom_path": "/Users/baka_akari/Downloads/Fujifilm-Logo-1934.jpg"
+  },
+  "custom_text": "",
+  "advanced": {
+    "global_font": "NotoSansCJKsc-Bold.otf",
+    "global_color": "#242424",
+    "corner_text_height_px": 0,
+    "footer_height_px": 0,
+    "logo_height_px": 0,
+    "left_margin": 25,
+    "right_margin": 25,
+    "top_margin": 25,
+    "bottom_margin": 25,
+    "margin_color": "#FFFFFF",
+    "border_radius": 20,
+    "shadow_radius": 20,
+    "shadow_color": "#000000",
+    "quality": 95,
+    "subsampling": 0,
+    "blur_radius": 0,
+    "ratio_enabled": false,
+    "ratio": "3:4",
+    "scale": 1.0,
+    "trim_enabled": false,
+    "trim_threshold": 0.0,
+    "concat_direction": "vertical",
+    "alignment_mode": "center",
+    "signature_enabled": true,
+    "signature_path": "/Users/baka_akari/Downloads/font-image (2).png",
+    "signature_color": "black"
   }
 }

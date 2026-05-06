@@ -1,6 +1,6 @@
 from jinja2 import pass_context
 
-from core.configs import logos_dir
+from core.config_loader import LOGOS_DIR as logos_dir
 
 
 @pass_context
@@ -16,7 +16,7 @@ def vh(context, percent):
 
 
 @pass_context
-def auto_logo(context, brand: str = None):
+def auto_logo(context, brand: str | None = None):
     exif = context.get('exif', {})
     brand = (brand or exif.get('Make', 'default')).lower()
 

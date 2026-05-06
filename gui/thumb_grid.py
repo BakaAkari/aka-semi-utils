@@ -1,24 +1,19 @@
 """缩略图容器 — 图片选择入口 + 缩略图展示，单一集成组件。"""
 
-import os
-from typing import List
 from pathlib import Path
 
-from PyQt6.QtWidgets import (
-    QWidget, QPushButton, QGridLayout, QLabel, QFileDialog,
-    QMenu, QApplication, QVBoxLayout, QSizePolicy
-)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QFont, QAction
 from PIL import Image
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QAction, QColor, QFont, QImage, QPainter, QPixmap
+from PyQt6.QtWidgets import QFileDialog, QGridLayout, QLabel, QMenu, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 
 class ThumbLoaderThread(QThread):
-    """后台缩略图生成线程。"""
+    """后台缩略图生成线程（Phase 9：接受 parent，让 Qt 父子链管理生命周期）。"""
     thumbnail_ready = pyqtSignal(int, QPixmap)  # index, pixmap
-    
-    def __init__(self, paths: List[str], size: tuple = (100, 75)):
-        super().__init__()
+
+    def __init__(self, paths: list[str], size: tuple = (100, 75), parent=None):
+        super().__init__(parent)
         self.paths = paths
         self.size = size
         self._cancelled = False
@@ -31,7 +26,11 @@ class ThumbLoaderThread(QThread):
             if self._cancelled:
                 return
             try:
-                img = Image.open(path)
+                # 用 with 包裹确保文件句柄立即关闭，避免大批量缩略图扫描时
+                # 触发 macOS/Linux "Too many open files"。
+                with Image.open(path) as src:
+                    src.load()
+                    img = src.copy()
                 img.thumbnail(self.size, Image.Resampling.LANCZOS)
                 # 转成方形：cover 裁切
                 w, h = img.size
@@ -43,7 +42,7 @@ class ThumbLoaderThread(QThread):
                 left = (new_w - target_w) // 2
                 top = (new_h - target_h) // 2
                 img = img.crop((left, top, left + target_w, top + target_h))
-                
+
                 # PIL → QPixmap
                 if img.mode != "RGBA":
                     img = img.convert("RGBA")
@@ -76,10 +75,11 @@ class ThumbContainer(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.files: List[str] = []
-        self.thumb_labels: List[QLabel] = []
-        self.loader_thread: ThumbLoaderThread = None
-        
+        self.files: list[str] = []
+        self.thumb_labels: list[QLabel] = []
+        # Phase 9：使用 Optional 注解 + Qt 父子链管理 ThumbLoaderThread 生命周期
+        self.loader_thread: ThumbLoaderThread | None = None
+
         self._setup_ui()
     
     def _setup_ui(self):
@@ -120,22 +120,25 @@ class ThumbContainer(QWidget):
         self.grid_widget.setVisible(False)
         self.layout.addWidget(self.grid_widget)
     
-    def set_files(self, paths: List[str]):
-        """设置文件列表（外部调用，如从 AppState 同步）。"""
+    # ---- SSOT 写入入口 ----
+    # Phase 9：本组件**完全去状态化** — `self.files` 仅作为 set_files 的本地缓存，
+    # 用户操作（add_files / remove_file）只 emit 信号，由 AppState 决定是否回写。
+    # 这样消除了"thumb_grid 内部状态" vs "AppState.selected_files"两份真相不同步的风险。
+
+    def set_files(self, paths: list[str]):
+        """**唯一**的本地状态写入入口 — 由 AppState.files_changed 信号驱动。"""
         self.files = list(paths)
         self._update_view()
-    
-    def add_files(self, paths: List[str]):
-        """追加文件。"""
-        self.files.extend(paths)
-        self._update_view()
-        self.file_added.emit(paths)
-    
+
+    def add_files(self, paths: list[str]):
+        """用户增量添加 — **只发信号**，不写本地状态（等 AppState 回流）。"""
+        if not paths:
+            return
+        self.file_added.emit(list(paths))
+
     def remove_file(self, index: int):
-        """删除指定索引。"""
+        """用户删除 — **只发信号**，不写本地状态（等 AppState 回流）。"""
         if 0 <= index < len(self.files):
-            del self.files[index]
-            self._update_view()
             self.file_removed.emit(index)
     
     def _update_view(self):
@@ -195,14 +198,24 @@ class ThumbContainer(QWidget):
             self.thumb_labels.append(thumb)
         
         # 启动异步加载（前10张优先）
-        if self.loader_thread and self.loader_thread.isRunning():
+        # Phase 9：统一线程生命周期 — parent=self 走 Qt 父子链；finished → 清 Python 引用 + deleteLater
+        if self.loader_thread is not None and self.loader_thread.isRunning():
             self.loader_thread.cancel()
             self.loader_thread.wait(1000)
-        
+
         if display_files:
-            self.loader_thread = ThumbLoaderThread(display_files)
-            self.loader_thread.thumbnail_ready.connect(self._on_thumbnail_ready)
-            self.loader_thread.start()
+            thread = ThumbLoaderThread(display_files, parent=self)
+            thread.thumbnail_ready.connect(self._on_thumbnail_ready)
+            thread.finished.connect(self._on_loader_finished)
+            thread.finished.connect(thread.deleteLater)
+            self.loader_thread = thread
+            thread.start()
+
+    def _on_loader_finished(self) -> None:
+        """ThumbLoaderThread 结束信号槽：sender 守卫 + 清空 Python 引用。"""
+        sender = self.sender()
+        if sender is self.loader_thread:
+            self.loader_thread = None
     
     def _on_thumbnail_ready(self, index: int, pixmap: QPixmap):
         """缩略图加载完成回调。"""

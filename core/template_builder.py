@@ -1,6 +1,9 @@
-"""模板构建器 — 将 user.json + config.ini 转换为 watermark processor JSON。"""
+"""模板构建器 — 将 user.json + config.ini 转换为 watermark processor JSON。
 
-import json
+Phase 6.4 重构：``_build_source_segment`` 通过 :mod:`gui.field_registry` 解析字段，
+不再用 if/elif 链硬编码 ``exif:CameraModelName`` 等 source 名称。
+"""
+
 import logging
 from pathlib import Path
 
@@ -20,20 +23,6 @@ def _font(name: str) -> str:
         return name
     logger.warning(f"字体 '{name}' 不存在，回退到 '{FALLBACK_FONT}'")
     return FALLBACK_FONT
-
-
-def _format_params() -> str:
-    """拍摄参数 Jinja2 拼接公式。"""
-    focal = "{{exif.FocalLengthIn35mmFormat|replace(' ', '')|default('-')}}"
-    aperture = "{{exif.ApertureValue or exif.FNumber|default('-')}}"
-    shutter = "{{exif.ShutterSpeed or exif.ShutterSpeedValue|default('-')}}"
-    iso = "{{exif.ISO|default('0')}}"
-    return f"{focal} f/{aperture} {shutter}s ISO{iso}"
-
-
-def _format_date() -> str:
-    """日期 Jinja2 公式（带 fallback 链）。"""
-    return "{{(exif.DateTimeOriginal or exif.CreateDate or exif.DigitalCreationDate or exif.DateCreated or exif.DateTimeCreated or exif.DigitalCreationDateTime|default('0'))[:16]}}"
 
 
 def build_watermark_processor(user_template: dict, config_ini) -> list:
@@ -60,11 +49,12 @@ def build_watermark_processor(user_template: dict, config_ini) -> list:
     right_logo = ""
     if logo_cfg.get("enabled", True):
         custom_logo = get_logo_path(config_ini)
-        if custom_logo:
-            right_logo = str(custom_logo).replace("\\", "/")
-        else:
-            # Jinja2 表达式，运行时由 auto_logo() 解析
-            right_logo = "{{auto_logo()|replace('\\\\', '/')}}"
+        # Jinja2 表达式，运行时由 auto_logo() 解析（无自定义 logo 时回退）
+        right_logo = (
+            str(custom_logo).replace("\\", "/")
+            if custom_logo
+            else "{{auto_logo()|replace('\\\\', '/')}}"
+        )
 
     watermark = {
         "processor_name": "watermark",
@@ -83,34 +73,34 @@ def build_watermark_processor(user_template: dict, config_ini) -> list:
 
 
 def _build_source_segment(source: str, font: str, color: str, config_ini, corner: str) -> dict | None:
-    """构建单个 source 的 text segment。"""
-    if source == "empty":
+    """构建单个 source 的 text segment。
+
+    Phase 6.4：先尝试通过 :class:`FieldRegistry` 解析（按 ``source_id`` 或 ``field_id``）；
+    未命中再回退到非注册的特殊源（如 ``author``）。
+    """
+    if not source or source == "empty":
         return None
 
-    if source == "exif:CameraModelName":
-        text = "{{ exif.CameraModelName|default('-') | replace('_', '') }}"
-        return {"text": text, "color": color, "font_path": font}
+    # 1. 走注册表（多数标准 EXIF 字段）
+    try:
+        from gui.field_registry import get_default_registry
+    except ImportError:  # pragma: no cover — gui 不可用时退化
+        registry = None
+    else:
+        registry = get_default_registry()
 
-    if source == "exif:LensModel":
-        text = "{{ exif.LensModel | default('-')}}"
-        return {"text": text, "color": color, "font_path": font}
+    if registry is not None:
+        fdef = registry.get_by_source(source) or registry.get(source)
+        if fdef is not None and fdef.jinja_template:
+            return {"text": fdef.jinja_template, "color": color, "font_path": font}
+        if fdef is not None and fdef.field_id == "empty":
+            return None
+        # custom_text 在 registry 里但 jinja 为空，需要从 config_ini 取真实文本
+        if fdef is not None and fdef.field_id == "custom_text":
+            text = get_custom_text(config_ini, corner)
+            return {"text": text, "color": color, "font_path": font}
 
-    if source == "exif:params":
-        text = _format_params()
-        return {"text": text, "color": color, "font_path": font}
-
-    if source == "exif:DateTimeOriginal":
-        text = _format_date()
-        return {"text": text, "color": color, "font_path": font}
-
-    if source == "exif:Make":
-        text = "{{ exif.Make|default('-') }}"
-        return {"text": text, "color": color, "font_path": font}
-
-    if source == "exif:GPSInfo":
-        text = "{{ exif.GPSLatitude|default('-') }}, {{ exif.GPSLongitude|default('-') }}"
-        return {"text": text, "color": color, "font_path": font}
-
+    # 2. 注册表外的特殊源
     if source == "author":
         name = config_ini.get("DEFAULT", "author_name", fallback="").strip()
         text = name if name else ""

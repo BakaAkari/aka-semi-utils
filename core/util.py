@@ -1,5 +1,4 @@
 import io
-import json
 import os
 import platform
 import re
@@ -9,12 +8,56 @@ import time
 from functools import wraps
 from pathlib import Path
 
-from PIL import Image
 from jinja2 import Template
+from PIL import Image
 
-from core.configs import templates_dir
-from core.jinja2renders import vh, vw, auto_logo
+from core.config_loader import TEMPLATES_DIR as templates_dir
+from core.jinja2renders import auto_logo, vh, vw
 from core.logger import logger
+
+# ---------------------------------------------------------------------------
+# Phase 5.2：进程内 EXIF 缓存
+# ---------------------------------------------------------------------------
+# 设计原则：
+# - 缓存 key = (绝对路径, mtime_ns)；文件改动则 mtime 变化，自动失效；
+# - 仅缓存"成功读取"的结果；空 dict 不缓存（避免吞掉一过性失败导致永久空）；
+# - 容量上限 ``_EXIF_CACHE_MAXSIZE`` 防止长时间运行内存膨胀；超额时按插入顺序
+#   FIFO 淘汰（dict 在 Python 3.7+ 保留插入序，无需 OrderedDict）；
+# - 跨进程隔离：每个 worker 独立一份；主进程的预读结果通过 ``pre_loaded_exif``
+#   显式传递给 worker，缓存只在"同一进程内多次调用"时起效。
+# ---------------------------------------------------------------------------
+_EXIF_CACHE: dict[tuple[str, int], dict] = {}
+_EXIF_CACHE_MAXSIZE = 512
+
+
+def _exif_cache_key(path: str | Path) -> tuple[str, int] | None:
+    """生成 ``(abspath, mtime_ns)`` 缓存 key；文件不存在返回 ``None``（不缓存）。"""
+    try:
+        st = os.stat(path)
+        return (os.path.abspath(str(path)), st.st_mtime_ns)
+    except OSError:
+        return None
+
+
+def _exif_cache_put(key: tuple[str, int], value: dict) -> None:
+    """写入缓存，超额时按 FIFO 淘汰最早一项。"""
+    if not value:
+        return  # 空结果不缓存（保留下次重试机会）
+    _EXIF_CACHE[key] = value
+    if len(_EXIF_CACHE) > _EXIF_CACHE_MAXSIZE:
+        # 弹出最早插入的一项（dict 保序）
+        oldest = next(iter(_EXIF_CACHE))
+        _EXIF_CACHE.pop(oldest, None)
+
+
+def clear_exif_cache() -> None:
+    """清空 EXIF 缓存（测试隔离 / 长跑后手动 GC 用）。"""
+    _EXIF_CACHE.clear()
+
+
+def exif_cache_size() -> int:
+    """返回当前缓存条目数（测试 / 调试用）。"""
+    return len(_EXIF_CACHE)
 
 if platform.system() == 'Windows':
     EXIFTOOL_PATH = Path('./exiftool/exiftool.exe')
@@ -27,41 +70,142 @@ else:
     ENCODING = 'utf-8'
 
 
+def _parse_exiftool_block(block: str) -> dict:
+    """把一段 exiftool 文本输出（单文件）解析成 key→value dict（私有工具）。"""
+    exif_dict: dict[str, str] = {}
+    for line in block.splitlines():
+        kv_pair = line.split(':')
+        if len(kv_pair) < 2:
+            continue
+        key = kv_pair[0].strip()
+        value = ':'.join(kv_pair[1:]).strip()
+        # 移除键中的空格与斜杠
+        key = re.sub(r'\s+', '', key)
+        key = re.sub(r'/', '', key)
+        exif_dict[key] = value
+    # 过滤非 ASCII 字符（保持原有 cleaning 行为）
+    for key, value in list(exif_dict.items()):
+        exif_dict[key] = ''.join(c for c in value if ord(c) < 128)
+    return exif_dict
+
+
 def get_exif(path) -> dict:
     """
-    获取exif信息
+    获取exif信息（Phase 5.2：自动 mtime 失效缓存）。
+
     :param path: 照片路径
     :return: exif信息
     """
-    exif_dict = {}
+    cache_key = _exif_cache_key(path)
+    if cache_key is not None:
+        cached = _EXIF_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
     try:
-        output_bytes = subprocess.check_output([EXIFTOOL_PATH, '-d', '%Y-%m-%d %H:%M:%S%3f%z', path])
+        output_bytes = subprocess.check_output(
+            [EXIFTOOL_PATH, '-d', '%Y-%m-%d %H:%M:%S%3f%z', str(path)]
+        )
         output = output_bytes.decode('utf-8', errors='ignore')
-
-        lines = output.splitlines()
-        utf8_lines = [line for line in lines]
-
-        for line in utf8_lines:
-            # 将每一行按冒号分隔成键值对
-            kv_pair = line.split(':')
-            if len(kv_pair) < 2:
-                continue
-            key = kv_pair[0].strip()
-            value = ':'.join(kv_pair[1:]).strip()
-            # 将键中的空格移除
-            key = re.sub(r'\s+', '', key)
-            key = re.sub(r'/', '', key)
-            # 将键值对添加到字典中
-            exif_dict[key] = value
-        for key, value in exif_dict.items():
-            # 过滤非 ASCII 字符
-            value_clean = ''.join(c for c in value if ord(c) < 128)
-            # 将处理后的值更新到 exif_dict 中
-            exif_dict[key] = value_clean
+        parsed = _parse_exiftool_block(output)
+        if cache_key is not None:
+            _exif_cache_put(cache_key, parsed)
+        return parsed
     except Exception as e:
         logger.error(f'get_exif error: {path} : {e}')
+        return {}
 
-    return exif_dict
+
+def get_exif_batch(paths: list[str]) -> dict[str, dict]:
+    """批量获取多个文件的 EXIF — 一次 exiftool 调用读取所有文件，远比逐张 fork 快。
+
+    适用于 :class:`gui.process_thread.ProcessThread` 等批处理场景。
+
+    Phase 5.2：先查 EXIF 缓存（``(abspath, mtime_ns)`` key），命中的文件直接复用；
+    剩余 miss 的文件才合并成一次 exiftool 调用，新结果回写进缓存。
+
+    Args:
+        paths: 文件路径列表（顺序保留）。
+
+    Returns:
+        ``dict[路径, EXIF dict]``。读取失败的文件值为空 dict（不抛异常，
+        以保持批处理的容错语义——单文件失败不影响其他）。
+    """
+    if not paths:
+        return {}
+
+    result: dict[str, dict] = {p: {} for p in paths}
+
+    # ---- Phase 5.2：先消化缓存命中 ----
+    miss_paths: list[str] = []
+    miss_keys: dict[str, tuple[str, int]] = {}
+    for p in paths:
+        key = _exif_cache_key(p)
+        if key is not None:
+            cached = _EXIF_CACHE.get(key)
+            if cached is not None:
+                result[p] = cached
+                continue
+            miss_keys[p] = key
+        miss_paths.append(p)
+
+    # 全部命中 — 直接返回，跳过 exiftool 调用
+    if not miss_paths:
+        return result
+
+    try:
+        # exiftool 一次接收多个文件路径并以 ``======== <path>`` 分隔输出。
+        output_bytes = subprocess.check_output(
+            [EXIFTOOL_PATH, '-d', '%Y-%m-%d %H:%M:%S%3f%z', *map(str, miss_paths)]
+        )
+        output = output_bytes.decode('utf-8', errors='ignore')
+    except Exception as e:
+        logger.error(f'get_exif_batch error: {e}')
+        # 失败回落到逐文件读取（保持容错；get_exif 内部会自行使用缓存）
+        for p in miss_paths:
+            result[p] = get_exif(p)
+        return result
+
+    # 按 "======== <path>" 切分各文件块
+    current_path: str | None = None
+    current_lines: list[str] = []
+
+    def _flush() -> None:
+        nonlocal current_path, current_lines
+        if current_path is not None:
+            block = '\n'.join(current_lines)
+            result[current_path] = _parse_exiftool_block(block)
+        current_lines = []
+
+    for line in output.splitlines():
+        if line.startswith('======== '):
+            _flush()
+            current_path = line[len('======== '):].strip()
+            # exiftool 可能输出相对路径——尝试匹配输入参数
+            if current_path not in result:
+                # 退化匹配：用 basename 找回原 key
+                from os.path import basename
+                bn = basename(current_path)
+                for p in miss_paths:
+                    if basename(p) == bn:
+                        current_path = p
+                        break
+            continue
+        current_lines.append(line)
+    _flush()
+
+    # 单文件场景下 exiftool 不会输出 "========" 分隔符（直接打印属性）
+    # 此时若 result 仍全为空，则视作单文件输出整体
+    if len(miss_paths) == 1 and not result[miss_paths[0]]:
+        result[miss_paths[0]] = _parse_exiftool_block(output)
+
+    # ---- Phase 5.2：把新结果回写进缓存 ----
+    for p, key in miss_keys.items():
+        parsed = result.get(p)
+        if parsed:
+            _exif_cache_put(key, parsed)
+
+    return result
 
 
 def list_files(path: str, suffixes: set[str], depth: int = 0, max_depth: int = 20):

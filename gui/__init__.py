@@ -1,15 +1,15 @@
 """gui 包 — PyQt6 桌面 GUI。"""
 
 __all__ = [
-    "AppState",
-    "MainWindow",
-    "ThumbContainer",
-    "ConfigPanel",
     "AdvancedPanel",
-    "TemplateManager",
-    "LogoDialog",
+    "AppState",
+    "ConfigPanel",
     "FontPreview",
+    "LogoDialog",
+    "MainWindow",
+    "TemplateManager",
+    "ThumbContainer",
     "get_stylesheet",
-    "state_to_processors",
     "processors_to_state",
+    "state_to_processors",
 ]

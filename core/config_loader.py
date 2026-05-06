@@ -1,14 +1,29 @@
-"""配置加载器 — 负责 config.ini 和 user.json 的读写、验证、默认值回退。"""
+"""配置加载器 — 项目级**唯一**配置入口。
+
+负责：
+- ``config.ini`` 与 ``user.json`` 的读写、验证、默认值回退
+- 项目内所有可配置路径常量的定义（FONTS_DIR / LOGOS_DIR / TEMPLATES_DIR …）
+- 加载项目元信息（``pyproject.toml``）
+
+历史上曾存在 [`core/configs.py`](core/configs.py:1) 作为另一份配置入口，
+现已退化为本模块的兼容别名 shim。所有新代码请直接 ``from core.config_loader import ...``。
+"""
+
+from __future__ import annotations
 
 import json
 import logging
-import shutil
-from configparser import ConfigParser, Error as ConfigParserError
+import shutil  # noqa: F401  保留以兼容外部 import
+from configparser import ConfigParser
+from configparser import Error as ConfigParserError
 from pathlib import Path
+from typing import Any
+
+import tomli
 
 logger = logging.getLogger(__name__)
 
-# 路径常量
+# ─────────── 路径常量 ───────────
 PROJECT_ROOT = Path(__file__).parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 CONFIG_INI_PATH = CONFIG_DIR / "config.ini"
@@ -16,6 +31,13 @@ USER_TEMPLATE_PATH = CONFIG_DIR / "user.json"
 DEFAULT_TEMPLATE_PATH = CONFIG_DIR / "templates" / "标准水印.json"
 FONTS_DIR = CONFIG_DIR / "fonts"
 LOGOS_DIR = CONFIG_DIR / "logos"
+TEMPLATES_DIR = CONFIG_DIR / "templates"
+PROJECT_INFO_PATH = PROJECT_ROOT / "pyproject.toml"
+
+# 兼容历史（旧名）：原 [`core/configs.py`](core/configs.py:8) 暴露的字段
+fonts_dir = FONTS_DIR
+logos_dir = LOGOS_DIR
+templates_dir = TEMPLATES_DIR
 
 # 默认值
 DEFAULT_CONFIG = """[DEFAULT]
@@ -72,7 +94,7 @@ def load_config_ini() -> ConfigParser:
 
     config = ConfigParser()
     try:
-        with open(CONFIG_INI_PATH, "r", encoding="utf-8") as f:
+        with open(CONFIG_INI_PATH, encoding="utf-8") as f:
             config.read_file(f)
     except ConfigParserError as e:
         logger.error(f"config.ini 语法错误: {e}")
@@ -123,7 +145,7 @@ def load_user_template() -> dict:
         return create_default_user_template()
 
     try:
-        with open(USER_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        with open(USER_TEMPLATE_PATH, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             raise ValueError("user.json 根节点不是对象")
@@ -175,10 +197,7 @@ def get_output_folder(config: ConfigParser, source_dir: Path | str | None = None
             path.mkdir(parents=True, exist_ok=True)
         except OSError:
             logger.warning(f"输出路径不可写: {path}，回退到默认")
-            if source_dir is not None:
-                path = Path(source_dir) / "logo"
-            else:
-                path = Path.home() / "Desktop" / "logo"
+            path = Path(source_dir) / "logo" if source_dir is not None else Path.home() / "Desktop" / "logo"
             path.mkdir(parents=True, exist_ok=True)
 
     return path
@@ -211,3 +230,21 @@ def get_logo_path(config: ConfigParser) -> Path | None:
         # 相对路径基于项目根目录
         path = PROJECT_ROOT / path
     return path if path.exists() else None
+
+
+# ─────────── 兼容别名（原 core/configs.py 的 API） ───────────
+
+def load_config() -> ConfigParser:
+    """读取 ``config.ini`` 的快捷方式。
+
+    .. deprecated::
+        新代码请直接调用 [`load_config_ini`](core/config_loader.py:65)。
+        此函数仅作为迁移期的桥接，保持与历史调用的二进制兼容。
+    """
+    return load_config_ini()
+
+
+def load_project_info() -> dict[str, Any]:
+    """读取 ``pyproject.toml`` 项目元信息。"""
+    with open(PROJECT_INFO_PATH, "rb") as f:
+        return tomli.load(f)

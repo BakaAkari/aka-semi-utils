@@ -1,16 +1,13 @@
-import os.path
-import sys
 from abc import ABC
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, List
 
 import numpy as np
-from PIL import ImageFont, Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
-from core.configs import fonts_dir
-from processor.core import PipelineContext, ImageProcessor, Direction, _parse_color
+from core.config_loader import FONTS_DIR as fonts_dir
+from processor.core import Direction, ImageProcessor, PipelineContext, _parse_color, register
 
 BASE_FONT_SIZE = 512
 
@@ -41,7 +38,7 @@ def load_font(font_path: str):
 @dataclass
 class TextSegment:
     text: str
-    font_path: Optional[str] = None
+    font_path: str | None = None
     height: int = 100
     is_bold: bool = False
     color: str = "black"
@@ -54,7 +51,7 @@ class TextSegment:
     def from_dict(data: dict):
         return TextSegment(
             text=data.get("text"),
-            font_path=data.get("font_path", None),
+            font_path=data.get("font_path"),
             height=int(data.get("height", 100)),
             color=data.get("color", "black"),
             is_bold=data.get("is_bold", False),
@@ -62,16 +59,18 @@ class TextSegment:
         )
 
     @staticmethod
-    def from_dicts(data: List[dict]):
+    def from_dicts(data: list[dict]):
         return [TextSegment.from_dict(datum) for datum in data]
 
 
 class Generator(ImageProcessor, ABC):
+    processor_category = "generator"
 
     def category(self) -> str:
         return "generator"
 
 
+@register("solid_color")
 class SolidColorGenerator(Generator):
 
     def process(self, ctx: PipelineContext):
@@ -168,6 +167,7 @@ def _draw_gradient_numpy(
     return Image.fromarray(pixels, mode='RGBA')
 
 
+@register("gradient_color")
 class GradientColorGenerator(Generator):
     def process(self, ctx: PipelineContext):
         width, height = ctx.get("width"), ctx.get("height")
@@ -191,6 +191,7 @@ class GradientColorGenerator(Generator):
         return "gradient_color"
 
 
+@register("rich_text")
 class RichTextGenerator(Generator):
     @staticmethod
     def generate(segment: TextSegment) -> Image.Image:
@@ -232,9 +233,10 @@ class RichTextGenerator(Generator):
         return "rich_text"
 
 
+@register("multi_rich_text")
 class MultiRichTextGenerator(Generator):
     def process(self, ctx: PipelineContext):
-        text_segments: List[TextSegment] = TextSegment.from_dicts(ctx.get("text_segments"))
+        text_segments: list[TextSegment] = TextSegment.from_dicts(ctx.get("text_segments"))
         text_alignment = ctx.get("text_alignment")
         text_spacing = ctx.getint("text_spacing")
         height = ctx.get("height", 100)
@@ -265,12 +267,17 @@ class MultiRichTextGenerator(Generator):
         return "multi_rich_text"
 
 
+@register("image")
 class ImageLoader(Generator):
     def process(self, ctx: PipelineContext):
-        if isinstance(ctx.get('path'), str):
-            ctx.update_buffer([Image.open(ctx.get('path'))]).success()
-        elif isinstance(ctx.get('path'), list):
-            ctx.update_buffer([Image.open(path) for path in ctx.get('path')])
+        # 立即 load + close fp，避免在 ProcessPool / 长批处理中堆积文件句柄。
+        from core.image_io import load_image_safely
+
+        path = ctx.get('path')
+        if isinstance(path, str):
+            ctx.update_buffer([load_image_safely(path)]).success()
+        elif isinstance(path, list):
+            ctx.update_buffer([load_image_safely(p) for p in path])
 
     def name(self) -> str:
         return "image"

@@ -1,21 +1,23 @@
-import configparser
-from pathlib import Path
+"""向后兼容 shim — 原配置入口现已并入 [`core.config_loader`](core/config_loader.py:1)。
 
-import tomli
+.. deprecated::
+    所有新代码请直接 ``from core.config_loader import ...``。
+    本模块仅作为迁移期的别名转发，未来版本将被移除。
+"""
+from __future__ import annotations
 
-from core import CONFIG_PATH, PROJECT_INFO
+from core.config_loader import (
+    fonts_dir,
+    load_config,
+    load_project_info,
+    logos_dir,
+    templates_dir,
+)
 
-fonts_dir = Path('config/fonts')
-logos_dir = Path('./config/logos')
-templates_dir = Path('./config/templates')
-
-def load_config() -> configparser.ConfigParser:
-    config = configparser.ConfigParser()
-    config.read(CONFIG_PATH)
-    return config
-
-
-def load_project_info():
-    with open(PROJECT_INFO, "rb") as f:  # 注意：tomllib 需要以二进制模式（"rb"）打开文件
-        data = tomli.load(f)
-    return data
+__all__ = [
+    "fonts_dir",
+    "load_config",
+    "load_project_info",
+    "logos_dir",
+    "templates_dir",
+]

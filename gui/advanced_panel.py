@@ -1,14 +1,25 @@
 """高级设置面板 - 所有分组默认折叠。"""
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QSlider,
-    QComboBox, QCheckBox, QLineEdit, QDoubleSpinBox, QPushButton,
-    QColorDialog, QFrame, QScrollArea
-)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QColorDialog,
+    QComboBox,
+    QDoubleSpinBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
 
-from .models import AppState, AdvancedConfig
+from .models import AdvancedConfig, AppState
 
 
 class CollapsibleGroup(QFrame):
@@ -84,8 +95,14 @@ class AdvancedPanel(QWidget):
     def __init__(self, state: AppState, parent=None):
         super().__init__(parent)
         self.state = state
+        # Phase 9：写回循环守卫 — _load_state 期间所有控件 setValue/setText 触发的
+        # *_changed → _on_changed → state.set_advanced_config 都被此 flag 短路。
+        self._loading: bool = False
         self._setup_ui()
         self._load_state()
+        # Phase 9：自订阅 advanced_changed —— 模板加载、reset_to_defaults 等外部全量
+        # 替换会发此信号；本面板不再依赖主窗口手工调 _load_state()。
+        self.state.advanced_changed.connect(self._load_state)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -178,6 +195,45 @@ class AdvancedPanel(QWidget):
         color_row.addWidget(self.global_color_btn)
         color_row.addStretch()
         group.add_layout(color_row)
+
+        # Phase 11：固定像素尺寸（0 = 旧自适应）
+        size_hint = QLabel("固定像素尺寸（0 = 按图片比例自适应；非 0 = 锁定为统一像素，不再随原图尺寸变化）")
+        size_hint.setWordWrap(True)
+        size_hint.setStyleSheet("color: #888888; font-size: 11px;")
+        group.add_widget(size_hint)
+
+        text_h_row = QHBoxLayout()
+        text_h_row.addWidget(QLabel("角落字体高度(px)："))
+        self.corner_text_height_px = QSpinBox()
+        self.corner_text_height_px.setRange(0, 2000)
+        self.corner_text_height_px.setValue(0)
+        self.corner_text_height_px.setFixedWidth(90)
+        self.corner_text_height_px.valueChanged.connect(self._on_changed)
+        text_h_row.addWidget(self.corner_text_height_px)
+        text_h_row.addStretch()
+        group.add_layout(text_h_row)
+
+        footer_h_row = QHBoxLayout()
+        footer_h_row.addWidget(QLabel("水印条高度(px)："))
+        self.footer_height_px = QSpinBox()
+        self.footer_height_px.setRange(0, 5000)
+        self.footer_height_px.setValue(0)
+        self.footer_height_px.setFixedWidth(90)
+        self.footer_height_px.valueChanged.connect(self._on_changed)
+        footer_h_row.addWidget(self.footer_height_px)
+        footer_h_row.addStretch()
+        group.add_layout(footer_h_row)
+
+        logo_h_row = QHBoxLayout()
+        logo_h_row.addWidget(QLabel("Logo 高度(px)："))
+        self.logo_height_px = QSpinBox()
+        self.logo_height_px.setRange(0, 5000)
+        self.logo_height_px.setValue(0)
+        self.logo_height_px.setFixedWidth(90)
+        self.logo_height_px.valueChanged.connect(self._on_changed)
+        logo_h_row.addWidget(self.logo_height_px)
+        logo_h_row.addStretch()
+        group.add_layout(logo_h_row)
 
     def _setup_margin_group(self, group: CollapsibleGroup):
         """边框/留白设置。"""
@@ -391,7 +447,10 @@ class AdvancedPanel(QWidget):
             self._on_changed()
 
     def _on_changed(self):
-        """配置变更时保存到 AppState。"""
+        """配置变更时保存到 AppState（Phase 9：写回循环守卫）。"""
+        if self._loading:
+            # _load_state 期间触发的 *_changed 信号一律忽略，避免写回循环
+            return
         self.quality_label.setText(str(self.quality_slider.value()))
 
         config = AdvancedConfig(
@@ -418,54 +477,71 @@ class AdvancedPanel(QWidget):
             signature_enabled=self.sig_enabled.isChecked(),
             signature_path=self.sig_path.text(),
             signature_color=self.sig_color.currentText(),
+            corner_text_height_px=self.corner_text_height_px.value(),
+            footer_height_px=self.footer_height_px.value(),
+            logo_height_px=self.logo_height_px.value(),
         )
         self.state.set_advanced_config(config)
 
-    def _load_state(self):
-        """从 AppState 加载配置。"""
-        cfg = self.state.advanced
-        
-        # 全局字体与颜色
-        idx = self.global_font.findText(cfg.global_font)
-        if idx >= 0:
-            self.global_font.setCurrentIndex(idx)
-        self.global_color.setText(cfg.global_color)
-        self.global_color_btn.setStyleSheet(f"background-color: {cfg.global_color}; border-radius: 4px; border: 1px solid #666666;")
-        
-        # 边距
-        self.left_margin_spin.setValue(cfg.left_margin)
-        self.right_margin_spin.setValue(cfg.right_margin)
-        self.top_margin_spin.setValue(cfg.top_margin)
-        self.bottom_margin_spin.setValue(cfg.bottom_margin)
-        self.margin_color.setText(cfg.margin_color)
-        self.margin_color_btn.setStyleSheet(f"background-color: {cfg.margin_color}; border-radius: 4px; border: 1px solid #666666;")
+    def _load_state(self, *_args):
+        """从 AppState 加载配置（Phase 9：用 self._loading 守卫包裹整个加载过程）。
 
-        self.border_radius.setValue(cfg.border_radius)
-        self.shadow_radius.setValue(cfg.shadow_radius)
-        self.shadow_color.setText(cfg.shadow_color)
-        self.shadow_color_btn.setStyleSheet(f"background-color: {cfg.shadow_color}; border-radius: 4px; border: 1px solid #666666;")
+        被以下场景调用：
+        1. 构造函数末尾首次同步
+        2. 自订阅 ``state.advanced_changed`` 信号（模板加载、reset 后由 AppState 主动通知）
+        """
+        self._loading = True
+        try:
+            cfg = self.state.advanced
 
-        self.quality_slider.setValue(cfg.quality)
-        self.quality_label.setText(str(cfg.quality))
-        self.subsampling.setCurrentIndex(cfg.subsampling)
+            # 全局字体与颜色
+            idx = self.global_font.findText(cfg.global_font)
+            if idx >= 0:
+                self.global_font.setCurrentIndex(idx)
+            self.global_color.setText(cfg.global_color)
+            self.global_color_btn.setStyleSheet(f"background-color: {cfg.global_color}; border-radius: 4px; border: 1px solid #666666;")
 
-        self.blur_radius.setValue(cfg.blur_radius)
-        self.ratio_enabled.setChecked(cfg.ratio_enabled)
-        self.ratio.setText(cfg.ratio)
+            # Phase 11：固定像素尺寸
+            self.corner_text_height_px.setValue(cfg.corner_text_height_px)
+            self.footer_height_px.setValue(cfg.footer_height_px)
+            self.logo_height_px.setValue(cfg.logo_height_px)
 
-        self.scale.setValue(cfg.scale)
-        self.trim_enabled.setChecked(cfg.trim_enabled)
-        self.trim_threshold.setValue(cfg.trim_threshold)
+            # 边距
+            self.left_margin_spin.setValue(cfg.left_margin)
+            self.right_margin_spin.setValue(cfg.right_margin)
+            self.top_margin_spin.setValue(cfg.top_margin)
+            self.bottom_margin_spin.setValue(cfg.bottom_margin)
+            self.margin_color.setText(cfg.margin_color)
+            self.margin_color_btn.setStyleSheet(f"background-color: {cfg.margin_color}; border-radius: 4px; border: 1px solid #666666;")
 
-        idx = self.concat_direction.findText(cfg.concat_direction)
-        if idx >= 0:
-            self.concat_direction.setCurrentIndex(idx)
-        idx = self.alignment_mode.findText(cfg.alignment_mode)
-        if idx >= 0:
-            self.alignment_mode.setCurrentIndex(idx)
+            self.border_radius.setValue(cfg.border_radius)
+            self.shadow_radius.setValue(cfg.shadow_radius)
+            self.shadow_color.setText(cfg.shadow_color)
+            self.shadow_color_btn.setStyleSheet(f"background-color: {cfg.shadow_color}; border-radius: 4px; border: 1px solid #666666;")
 
-        self.sig_enabled.setChecked(cfg.signature_enabled)
-        self.sig_path.setText(cfg.signature_path)
-        idx = self.sig_color.findText(cfg.signature_color)
-        if idx >= 0:
-            self.sig_color.setCurrentIndex(idx)
+            self.quality_slider.setValue(cfg.quality)
+            self.quality_label.setText(str(cfg.quality))
+            self.subsampling.setCurrentIndex(cfg.subsampling)
+
+            self.blur_radius.setValue(cfg.blur_radius)
+            self.ratio_enabled.setChecked(cfg.ratio_enabled)
+            self.ratio.setText(cfg.ratio)
+
+            self.scale.setValue(cfg.scale)
+            self.trim_enabled.setChecked(cfg.trim_enabled)
+            self.trim_threshold.setValue(cfg.trim_threshold)
+
+            idx = self.concat_direction.findText(cfg.concat_direction)
+            if idx >= 0:
+                self.concat_direction.setCurrentIndex(idx)
+            idx = self.alignment_mode.findText(cfg.alignment_mode)
+            if idx >= 0:
+                self.alignment_mode.setCurrentIndex(idx)
+
+            self.sig_enabled.setChecked(cfg.signature_enabled)
+            self.sig_path.setText(cfg.signature_path)
+            idx = self.sig_color.findText(cfg.signature_color)
+            if idx >= 0:
+                self.sig_color.setCurrentIndex(idx)
+        finally:
+            self._loading = False

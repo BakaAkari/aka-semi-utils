@@ -3,9 +3,10 @@
 
 使用 loguru 提供统一的日志接口，自动拦截 Flask 的标准 logging 输出
 """
-import sys
 import logging
+import sys
 from pathlib import Path
+
 from loguru import logger
 
 # 移除 loguru 默认的 handler
@@ -130,4 +131,4 @@ def init_from_config(config):
 
 
 # 导出 logger
-__all__ = ["logger", "setup_logging", "init_from_config"]
+__all__ = ["init_from_config", "logger", "setup_logging"]

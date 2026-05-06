@@ -1,22 +1,23 @@
 import json
 import re
 from abc import ABC
-from typing import Tuple
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 from core.logger import logger
-from core.util import get_exif
-from processor.core import ImageProcessor, PipelineContext, start_process, get_processor
+from processor.core import ImageProcessor, PipelineContext, get_processor, register, start_process
 from processor.types import Alignment
 
 
 class FilterProcessor(ImageProcessor, ABC):
+    processor_category = "filter"
+
     def category(self) -> str:
         return "filter"
 
 
+@register("blur")
 class BlurFilter(FilterProcessor):
     def process(self, ctx: PipelineContext):
         radius = ctx.getint("blur_radius", 5)
@@ -33,6 +34,7 @@ class BlurFilter(FilterProcessor):
         return "blur"
 
 
+@register("resize")
 class ResizeFilter(FilterProcessor):
     def process(self, ctx: PipelineContext):
         width, height = ctx.get("width"), ctx.get("height")
@@ -62,8 +64,11 @@ class ResizeFilter(FilterProcessor):
         return "resize"
 
 
+@register("trim")
 class TrimFilter(FilterProcessor):
-    threshold: float = 10.0,
+    # 注：原代码 ``threshold = 10.0,`` 末尾误带逗号导致变成单元素 tuple，
+    # 这里修正为标量 float（实际未被外部读取，仅作为类级默认配置占位）。
+    threshold: float = 10.0
     padding: int = 0
 
     def process(self, ctx: PipelineContext):
@@ -97,7 +102,7 @@ class TrimFilter(FilterProcessor):
             threshold: float,
             width: int,
             height: int
-    ) -> Tuple[int, int, int, int]:
+    ) -> tuple[int, int, int, int]:
         """
         从四个方向向内收缩边界框
 
@@ -140,23 +145,28 @@ class TrimFilter(FilterProcessor):
             trim_right: bool = True,
             trim_top: bool = True,
             trim_bottom: bool = True,
-    ) -> Tuple[int, int, int, int]:
+    ) -> tuple[int, int, int, int]:
         img_array = np.array(image, dtype=np.float32)
 
         # 处理灰度图（2D → 3D）
         if img_array.ndim == 2:
             img_array = img_array[:, :, np.newaxis]
 
-        height, width, channels = img_array.shape
+        height, width, _channels = img_array.shape
 
         # ===== 第一步：取四角像素均值作为背景色 =====
         background_color = self._get_background_color(img_array)
 
-        # ===== 第二步：计算每个像素与背景的差异 =====
-        diff = np.sqrt(np.sum((img_array - background_color) ** 2, axis=-1))
+        # ===== 第二步：计算每个像素与背景的差异（Phase 5.6：用平方距离避开 sqrt） =====
+        # 原: diff = sqrt(sum((img - bg)^2)) ；阈值比较等价于 diff^2 > threshold^2，
+        # 省掉每像素的 sqrt（在大图上是显著的 numpy ufunc 节省）。
+        delta = img_array - background_color
+        # einsum 一次完成逐像素平方求和（比 (a**2).sum(axis=-1) 快、内存更省）
+        diff_sq = np.einsum("ijk,ijk->ij", delta, delta)
+        threshold_sq = float(threshold) * float(threshold)
 
-        # ===== 第三步：从四个方向向内扫描，收缩边界框 =====
-        left, right, top, bottom = self._shrink_bbox(diff, threshold, width, height)
+        # ===== 第三步：从四个方向向内扫描，收缩边界框（用 squared threshold） =====
+        left, right, top, bottom = self._shrink_bbox(diff_sq, threshold_sq, width, height)
 
         if not trim_left:
             left = 0
@@ -175,6 +185,7 @@ class TrimFilter(FilterProcessor):
         return left, top, right, bottom
 
 
+@register("margin")
 class MarginFilter(FilterProcessor):
 
     def process(self, ctx: PipelineContext):
@@ -210,6 +221,7 @@ class MarginFilter(FilterProcessor):
         return "margin"
 
 
+@register("margin_with_ratio")
 class MarginWithRatioFilter(FilterProcessor):
     ratio_pattern = re.compile('[0-9.]+:[0-9.]+')
     ratio_threshold = 0.01
@@ -245,172 +257,300 @@ class MarginWithRatioFilter(FilterProcessor):
         return "margin_with_ratio"
 
 
+@register("watermark")
 class WatermarkFilter(FilterProcessor):
+    """主水印滤镜 — 在图像底部添加四角文本 + 三处 logo（左/中/右）。
+
+    process() 已按职责拆分为多个私有方法：
+
+    - :meth:`_collect_params`         — 从 ctx 收集所有参数为局部 dict
+    - :meth:`_render_corner_texts`    — 渲染四角文本（含自适应缩放）
+    - :meth:`_load_logos`             — 加载左/中/右三个 logo（容错）
+    - :meth:`_paste_main_and_left`    — 主图 + 左 logo
+    - :meth:`_paste_center_logo`      — 中央 logo（含按高度 resize）
+    - :meth:`_compute_text_layout`    — 计算四角文本坐标
+    - :meth:`_paste_texts`            — 粘贴四角文本
+    - :meth:`_paste_right_logo`       — 右 logo + 分隔线
+    """
+
     def process(self, ctx: PipelineContext):
         img = ctx.get_buffer()[0]
-        color = ctx.get("color", "white")
-        delimiter_color = ctx.get("delimiter_color", "black")
-        delimiter_width = ctx.getint("delimiter_width", int(img.width * .003))
-        left_margin = ctx.getint("left_margin", 0)
-        right_margin = ctx.getint("right_margin", 0)
-        top_margin = ctx.getint("top_margin", 0)
-        bottom_margin = ctx.getint("bottom_margin", int(img.height * .12))
-        middle_spacing = ctx.getint("middle_spacing", int(bottom_margin * .05))
-        right_alignment = ctx.getenum("right_alignment", Alignment.RIGHT, Alignment)
+        params = self._collect_params(ctx, img)
 
-        for t_s in [ctx.get("left_top"), ctx.get("left_bottom"), ctx.get("right_top"), ctx.get("right_bottom")]:
+        corners = self._render_corner_texts(ctx, params)
+        logos = self._load_logos(ctx)
+
+        canvas_width = img.width + params["left_margin"] + params["right_margin"]
+        canvas_height = img.height + params["top_margin"] + params["bottom_margin"]
+        common_spacing = int(0.02 * canvas_width)
+
+        canvas = Image.new("RGBA", (canvas_width, canvas_height), params["color"])
+        footer_start_y = params["top_margin"] + img.height
+
+        left_logo_width = self._paste_main_and_left(
+            canvas, img, logos["left_logo"], params, footer_start_y
+        )
+        self._paste_center_logo(canvas, logos["center_logo"], ctx, footer_start_y)
+
+        layout = self._compute_text_layout(
+            corners=corners,
+            params=params,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            left_logo_width=left_logo_width,
+            common_spacing=common_spacing,
+        )
+        self._paste_texts(canvas, corners, layout)
+
+        if logos["right_logo"]:
+            self._paste_right_logo(
+                canvas=canvas,
+                right_logo=logos["right_logo"],
+                corners=corners,
+                params=params,
+                canvas_width=canvas_width,
+                footer_start_y=footer_start_y,
+                elem_margin=layout["elem_margin"],
+                elem_height=layout["elem_height"],
+                common_spacing=common_spacing,
+            )
+
+        ctx.update_buffer([canvas]).save_buffer(self.name()).success()
+
+    def name(self) -> str:
+        return "watermark"
+
+    # ------------------------------------------------------------- helpers
+    def _collect_params(self, ctx: PipelineContext, img: Image.Image) -> dict:
+        """把 ctx 中散落的字符串键收拢为一个局部参数 dict。"""
+        bottom_margin = ctx.getint("bottom_margin", int(img.height * 0.12))
+        return {
+            "color": ctx.get("color", "white"),
+            "delimiter_color": ctx.get("delimiter_color", "black"),
+            "delimiter_width": ctx.getint("delimiter_width", int(img.width * 0.003)),
+            "left_margin": ctx.getint("left_margin", 0),
+            "right_margin": ctx.getint("right_margin", 0),
+            "top_margin": ctx.getint("top_margin", 0),
+            "bottom_margin": bottom_margin,
+            "middle_spacing": ctx.getint("middle_spacing", int(bottom_margin * 0.05)),
+            "right_alignment": ctx.getenum("right_alignment", Alignment.RIGHT, Alignment),
+        }
+
+    def _render_corner_texts(self, ctx: PipelineContext, params: dict) -> dict[str, Image.Image]:
+        """渲染左上/左下/右上/右下四个角落的文本图。
+
+        Phase 11：彻底关闭"按画布宽度自动缩放文本"的行为 —
+        仅当 corner 配置未显式指定 ``height`` 时，才用 ``bottom_margin * 0.3`` 作为兜底；
+        对超宽文本只记录 warning 不再 resize，保证字号在不同分辨率源图下完全一致。
+        """
+        bottom_margin = params["bottom_margin"]
+        for t_s in [ctx.get("left_top"), ctx.get("left_bottom"),
+                    ctx.get("right_top"), ctx.get("right_bottom")]:
             if t_s and "height" not in t_s:
-                t_s["height"] = int(bottom_margin * .3)
+                t_s["height"] = int(bottom_margin * 0.3)
 
         def _process_corner(corner_cfg):
             if corner_cfg is None:
                 return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
             return start_process([corner_cfg])
 
-        left_top = _process_corner(ctx.get("left_top"))
-        left_bottom = _process_corner(ctx.get("left_bottom"))
-        right_top = _process_corner(ctx.get("right_top"))
-        right_bottom = _process_corner(ctx.get("right_bottom"))
+        corners = {
+            "left_top": _process_corner(ctx.get("left_top")),
+            "left_bottom": _process_corner(ctx.get("left_bottom")),
+            "right_top": _process_corner(ctx.get("right_top")),
+            "right_bottom": _process_corner(ctx.get("right_bottom")),
+        }
 
-        # ── 自适应缩放：防止文本在窄画布下被裁剪 ──
-        canvas_width = img.width + left_margin + right_margin
-        # 文本最大宽度限制为有效画布宽度的 42%（左右两侧合计约 84%，留 16% 间距）
-        effective_width = canvas_width - left_margin - right_margin
+        # Phase 11：禁用自动缩放 —— 仅在文本超过画布安全宽度时给出 warning，绝不 resize。
+        img = ctx.get_buffer()[0]
+        canvas_width = img.width + params["left_margin"] + params["right_margin"]
+        effective_width = canvas_width - params["left_margin"] - params["right_margin"]
         max_text_width = max(1, int(effective_width * 0.42))
 
-        def _fit_text(text_img: Image.Image) -> Image.Image:
+        for corner_name, text_img in corners.items():
             if text_img.width > max_text_width:
-                scale = max_text_width / text_img.width
-                new_h = int(text_img.height * scale)
-                logger.debug(f"[WatermarkFilter] 文本自适应缩放: {text_img.width}x{text_img.height} -> {max_text_width}x{new_h} (scale={scale:.2f})")
-                return text_img.resize((max_text_width, new_h), Image.Resampling.LANCZOS)
-            return text_img
+                logger.warning(
+                    f"[WatermarkFilter] {corner_name} 文本宽度 {text_img.width}px 超过画布安全宽度 "
+                    f"{max_text_width}px（可能被画布裁剪）。"
+                    f"Phase 11 已禁用自动缩放以保证字号统一 —— 请减小 corner.height 或精简文本。"
+                )
 
-        left_top = _fit_text(left_top)
-        left_bottom = _fit_text(left_bottom)
-        right_top = _fit_text(right_top)
-        right_bottom = _fit_text(right_bottom)
+        return corners
 
-        left_logo = None
-        if ctx.get("left_logo"):
+    def _load_logos(self, ctx: PipelineContext) -> dict[str, Image.Image | None]:
+        """加载三个 logo（缺失时记 warning 但不抛错）。"""
+        from core.image_io import load_logo
+
+        logos: dict[str, Image.Image | None] = {
+            "left_logo": None,
+            "right_logo": None,
+            "center_logo": None,
+        }
+        for key in ("left_logo", "right_logo", "center_logo"):
+            path = ctx.get(key)
+            if not path:
+                continue
             try:
-                left_logo = Image.open(ctx.get("left_logo")).convert('RGBA')
+                logos[key] = load_logo(path)
             except FileNotFoundError:
-                logger.warning(f"Logo 文件不存在: {ctx.get('left_logo')}")
-        right_logo = None
-        if ctx.get("right_logo"):
-            try:
-                right_logo = Image.open(ctx.get("right_logo")).convert('RGBA')
-            except FileNotFoundError:
-                logger.warning(f"Logo 文件不存在: {ctx.get('right_logo')}")
-        center_logo = None
-        if ctx.get("center_logo"):
-            try:
-                center_logo = Image.open(ctx.get("center_logo")).convert('RGBA')
-            except FileNotFoundError:
-                logger.warning(f"Logo 文件不存在: {ctx.get('center_logo')}")
+                logger.warning(f"Logo 文件不存在: {path}")
+        return logos
+
+    def _paste_main_and_left(
+        self,
+        canvas: Image.Image,
+        img: Image.Image,
+        left_logo: Image.Image | None,
+        params: dict,
+        footer_start_y: int,
+    ) -> int:
+        """粘贴主图 + 左 logo（正方形，吃满 footer 高度），返回 left_logo_width。"""
+        canvas.paste(
+            img,
+            (params["left_margin"], params["top_margin"]),
+            mask=img if img.mode == "RGBA" else None,
+        )
+        if not left_logo:
+            return 0
+        logo_size = canvas.height - footer_start_y
+        left_logo = left_logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+        canvas.paste(
+            left_logo,
+            (params["left_margin"], footer_start_y),
+            mask=left_logo if left_logo.mode == "RGBA" else None,
+        )
+        return logo_size
+
+    def _paste_center_logo(
+        self,
+        canvas: Image.Image,
+        center_logo: Image.Image | None,
+        ctx: PipelineContext,
+        footer_start_y: int,
+    ) -> None:
+        """粘贴中央 logo（先用 ResizeFilter 按高度等比缩放再居中粘贴）。"""
+        if not center_logo:
+            return
         center_logo_height = ctx.getint("center_logo_height")
+        logo_height = center_logo_height if center_logo_height else canvas.height - footer_start_y
 
-        canvas_width = img.width + left_margin + right_margin
-        canvas_height = img.height + top_margin + bottom_margin
-        common_spacing = int(.02 * canvas_width)
+        resize_ctx = PipelineContext({"buffer": [center_logo], "height": logo_height})
+        resize_processor = get_processor("resize")
+        if resize_processor:
+            resize_processor().process(resize_ctx)
+            center_logo = resize_ctx.get_buffer()[0]
+        else:
+            logger.warning("ResizeFilter not found in registry, skipping logo resize")
 
-        # 新建画布
-        canvas = Image.new("RGBA", (canvas_width, canvas_height), color)
-        # 主图
-        canvas.paste(img, (left_margin, top_margin), mask=img if img.mode == 'RGBA' else None)
-        # 底部区域
-        footer_start_y = top_margin + img.height
-        # 左图标处理
-        left_logo_width = 0
-        if left_logo:
-            logo_size = canvas_height - footer_start_y
-            # 缩放图标以适应底部高度 (正方形)
-            left_logo = left_logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
-            canvas.paste(left_logo, (left_margin, footer_start_y), mask=left_logo if left_logo.mode == 'RGBA' else None)
-            left_logo_width = logo_size
+        center_x = (canvas.width - center_logo.width) // 2
+        center_y = footer_start_y + ((canvas.height - footer_start_y) - center_logo.height) // 2
+        canvas.paste(
+            center_logo,
+            (center_x, center_y),
+            mask=center_logo if center_logo.mode == "RGBA" else None,
+        )
 
-        if center_logo:
-            logo_height = center_logo_height if center_logo_height else canvas_height - footer_start_y
-            resize_ctx = PipelineContext({
-                'buffer': [center_logo],
-                'height': logo_height
-            })
-            resize_processor = get_processor("resize")
-            if resize_processor:
-                resize_processor().process(resize_ctx)
-                center_logo = resize_ctx.get_buffer()[0]
-            else:
-                logger.warning("ResizeFilter not found in registry, skipping logo resize")
-            center_x = (canvas.width - center_logo.width) // 2
-            center_y = footer_start_y + ((canvas.height - footer_start_y) - center_logo.height) // 2
-            canvas.paste(center_logo, (center_x, center_y), mask=center_logo if center_logo.mode == 'RGBA' else None)
+    def _compute_text_layout(
+        self,
+        corners: dict[str, Image.Image],
+        params: dict,
+        canvas_width: int,
+        canvas_height: int,
+        left_logo_width: int,
+        common_spacing: int,
+    ) -> dict:
+        """计算四角文本的粘贴坐标与块高度元信息。"""
+        lt, lb = corners["left_top"], corners["left_bottom"]
+        rt, rb = corners["right_top"], corners["right_bottom"]
+        middle_spacing = params["middle_spacing"]
+        bottom_margin = params["bottom_margin"]
 
-        # 文本处理
-        elem_height = max(left_top.height + left_bottom.height, right_top.height + right_bottom.height) + middle_spacing
-        # 计算文本块距离底部边缘的留白，使其在 bottom_margin 区域内垂直居中
+        elem_height = max(lt.height + lb.height, rt.height + rb.height) + middle_spacing
         elem_margin = int((bottom_margin - elem_height) / 2)
-        # PIL 坐标原点在左上角。
-        l_x = left_margin + left_logo_width + common_spacing
 
-        # 右侧文本 X 坐标基准 (右对齐)
-        # 右侧内容的右边界 = canvas_width - right_margin - right_logo_width
-        right_content_end_x = canvas_width - right_margin
-        # --- 左上 (Left Top) ---
-        # 距离下边缘: elem_margin + left_bottom.height + middle_spacing + left_top.height
-        bottom_dist_lt = elem_margin + left_bottom.height + middle_spacing + left_top.height
+        l_x = params["left_margin"] + left_logo_width + common_spacing
+        right_content_end_x = canvas_width - params["right_margin"]
+
+        # 左上 / 左下 Y 坐标（基于底部对齐）
+        bottom_dist_lt = elem_margin + lb.height + middle_spacing + lt.height
         lt_y = canvas_height - bottom_dist_lt
-
-        # --- 左下 (Left Bottom) ---
-        # 距离下边缘: elem_margin + left_bottom.height
-        bottom_dist_lb = elem_margin + left_bottom.height
+        bottom_dist_lb = elem_margin + lb.height
         lb_y = canvas_height - bottom_dist_lb
 
-        # --- 右上 (Right Top) ---
-        # 规则：右上和左上是“底部对齐”。
-        # 左上图片的底部 Y 坐标 = lt_y + left_top.height
-        # 右上 Y = 左上底部 Y - 右上高度
-        rt_y = (lt_y + left_top.height) - right_top.height
-        rt_x = right_content_end_x - right_top.width - common_spacing  # 右对齐计算
-        # --- 右下 (Right Bottom) ---
-        # 规则：右下和左下是“底部对齐”。
-        # 左下图片的底部 Y 坐标 = lb_y + left_bottom.height
-        # 右下 Y = 左下底部 Y - 右下高度
-        rb_y = (lb_y + left_bottom.height) - right_bottom.height
-        rb_x = right_content_end_x - right_bottom.width - common_spacing  # 右对齐计算
-        if Alignment.LEFT == right_alignment:
+        # 右上 / 右下 Y 坐标（与对应左侧底部对齐）
+        rt_y = (lt_y + lt.height) - rt.height
+        rt_x = right_content_end_x - rt.width - common_spacing
+        rb_y = (lb_y + lb.height) - rb.height
+        rb_x = right_content_end_x - rb.width - common_spacing
+
+        if params["right_alignment"] == Alignment.LEFT:
             rt_x = rb_x = min(rt_x, rb_x)
 
-        # 6. 绘制文本元素
-        # 使用 mask 确保透明背景的文字能正确叠加
-        canvas.paste(left_top, (l_x, lt_y), mask=left_top if left_top.mode == 'RGBA' else None)
-        canvas.paste(left_bottom, (l_x, lb_y), mask=left_bottom if left_bottom.mode == 'RGBA' else None)
-        canvas.paste(right_top, (rt_x, rt_y), mask=right_top if right_top.mode == 'RGBA' else None)
-        canvas.paste(right_bottom, (rb_x, rb_y), mask=right_bottom if right_bottom.mode == 'RGBA' else None)
+        return {
+            "elem_height": elem_height,
+            "elem_margin": elem_margin,
+            "l_x": l_x,
+            "lt_y": lt_y,
+            "lb_y": lb_y,
+            "rt_x": rt_x,
+            "rt_y": rt_y,
+            "rb_x": rb_x,
+            "rb_y": rb_y,
+        }
 
-        # 右图标处理 (逻辑类推：放置在右边距内侧)
-        if right_logo:
-            # 先画一条分割线
-            logo_size = elem_height
-            delimiter = Image.new("RGBA", (delimiter_width, int(logo_size * 1.1)), delimiter_color)
-            delimiter_x = canvas_width - right_margin - max(right_top.width,
-                                                            right_bottom.width) - 2 * common_spacing - delimiter.width
-            delimiter_y = int(footer_start_y + elem_margin - logo_size * .05)
-            canvas.paste(delimiter, (delimiter_x, delimiter_y), mask=delimiter)
+    def _paste_texts(self, canvas: Image.Image, corners: dict, layout: dict) -> None:
+        """把四角文本图粘贴到画布上（用 mask 处理透明背景）。"""
+        l_x = layout["l_x"]
+        canvas.paste(corners["left_top"], (l_x, layout["lt_y"]),
+                     mask=corners["left_top"] if corners["left_top"].mode == "RGBA" else None)
+        canvas.paste(corners["left_bottom"], (l_x, layout["lb_y"]),
+                     mask=corners["left_bottom"] if corners["left_bottom"].mode == "RGBA" else None)
+        canvas.paste(corners["right_top"], (layout["rt_x"], layout["rt_y"]),
+                     mask=corners["right_top"] if corners["right_top"].mode == "RGBA" else None)
+        canvas.paste(corners["right_bottom"], (layout["rb_x"], layout["rb_y"]),
+                     mask=corners["right_bottom"] if corners["right_bottom"].mode == "RGBA" else None)
 
-            right_logo = right_logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
-            right_logo_x = delimiter_x - common_spacing - logo_size
-            right_logo_y = footer_start_y + elem_margin
-            canvas.paste(right_logo, (right_logo_x, right_logo_y),
-                         mask=right_logo if right_logo.mode == 'RGBA' else None)
+    def _paste_right_logo(
+        self,
+        canvas: Image.Image,
+        right_logo: Image.Image,
+        corners: dict,
+        params: dict,
+        canvas_width: int,
+        footer_start_y: int,
+        elem_margin: int,
+        elem_height: int,
+        common_spacing: int,
+    ) -> None:
+        """粘贴右 logo + 与文本之间的分隔线。"""
+        logo_size = elem_height
+        delimiter = Image.new(
+            "RGBA",
+            (params["delimiter_width"], int(logo_size * 1.1)),
+            params["delimiter_color"],
+        )
+        rt, rb = corners["right_top"], corners["right_bottom"]
+        delimiter_x = (
+            canvas_width
+            - params["right_margin"]
+            - max(rt.width, rb.width)
+            - 2 * common_spacing
+            - delimiter.width
+        )
+        delimiter_y = int(footer_start_y + elem_margin - logo_size * 0.05)
+        canvas.paste(delimiter, (delimiter_x, delimiter_y), mask=delimiter)
 
-        # 7. 返回结果
-        ctx.update_buffer([canvas]).save_buffer(self.name()).success()
+        right_logo = right_logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+        right_logo_x = delimiter_x - common_spacing - logo_size
+        right_logo_y = footer_start_y + elem_margin
+        canvas.paste(
+            right_logo,
+            (right_logo_x, right_logo_y),
+            mask=right_logo if right_logo.mode == "RGBA" else None,
+        )
 
-    def name(self) -> str:
-        return "watermark"
 
-
+@register("watermark_with_timestamp")
 class WatermarkWithTimestampFilter(FilterProcessor):
     def process(self, ctx: PipelineContext):
         img = ctx.get_buffer()[0]
@@ -435,6 +575,7 @@ class WatermarkWithTimestampFilter(FilterProcessor):
         return "watermark_with_timestamp"
 
 
+@register("rounded_corner")
 class RoundedCornerFilter(FilterProcessor):
     def process(self, ctx: PipelineContext):
         # CSS风格: border-radius, 单位px
@@ -466,6 +607,7 @@ class RoundedCornerFilter(FilterProcessor):
         return "rounded_corner"
 
 
+@register("shadow")
 class ShadowFilter(FilterProcessor):
 
     def process(self, ctx: PipelineContext):
@@ -475,10 +617,7 @@ class ShadowFilter(FilterProcessor):
         falloff = 1.5
         buffer = []
         for img in ctx.get_buffer():
-            if img.mode != 'RGBA':
-                original_img = img.convert('RGBA')
-            else:
-                original_img = img
+            original_img = img.convert('RGBA') if img.mode != 'RGBA' else img
             w, h = original_img.size
             if shadow_radius <= 0:
                 buffer.append(img)
@@ -500,86 +639,38 @@ class ShadowFilter(FilterProcessor):
             buffer.append(shadow_blurred)
         ctx.update_buffer(buffer).save_buffer(self.name()).success()
 
-    def process2(self, ctx: PipelineContext):
-        shadow_color = ctx.getcolor("shadow_color", (0, 0, 0, 255))
-        # 即使radius设为30，为了视觉效果彻底消失，建议不要设太小
-        shadow_radius = ctx.getint("shadow_radius", 30)
-        buffer = []
-        for img in ctx.get_buffer():
-            if img.mode != 'RGBA':
-                original_img = img.convert('RGBA')
-            else:
-                original_img = img
-
-            w, h = original_img.size
-            if shadow_radius <= 0:
-                buffer.append(img)
-                continue
-            # --- 优化点 1: 扩大画布范围 (3-Sigma 原则) ---
-            # 高斯模糊的尾部很长，只有预留 3倍半径 的空间，边缘像素才能自然衰减到 0 (完全透明)
-            # 如果只留 1倍，最外圈一定会被切断，留下一圈灰色的“硬边”
-            padding = shadow_radius * 3
-
-            full_width = w + padding * 2
-            full_height = h + padding * 2
-
-            # 创建底图
-            background = Image.new('RGBA', (full_width, full_height), (0, 0, 0, 0))
-            # --- 优化点 2: 制作纯色剪影 ---
-            shadow_layer = Image.new('RGBA', (w, h), shadow_color)
-            shadow_layer.putalpha(original_img.getchannel('A'))
-
-            # 将剪影贴入底图中心
-            background.paste(shadow_layer, (padding, padding))
-            # --- 优化点 3: 高斯模糊 ---
-            shadow_in_process = background.filter(ImageFilter.GaussianBlur(shadow_radius))
-            # --- 优化点 4: Alpha 通道非线性衰减 (缓动关键) ---
-            # 这一步是为了解决“灰色残留”并让阴影更有层次感。
-            # 我们提取阴影的 Alpha 通道，对其进行 指数运算。
-            # 作用：让原本很淡的边缘（如 alpha=10）迅速变成 0，而原本浓的地方保持保留。
-            # 这是清理 "脏边缘" 最有效的手段。
-            r, g, b, a = shadow_in_process.split()
-
-            # lambda x: int(x * ((x / 255.0) ** 0.5)) -> 这种会让阴影更丰满
-            # lambda x: int(x * ((x / 255.0) ** 2))   -> 这种会让边缘收得更快(Fade Out)，彻底消除灰边
-
-            # 这里使用平方级衰减 (Quad Ease In)，强力清洗边缘
-            a = a.point(lambda p: int(p * (p / 255.0) * 1.2))
-
-            shadow_in_process.putalpha(a)
-            # 组合原图
-            shadow_in_process.paste(original_img, (padding, padding), mask=original_img)
-
-            # (可选) 如果你不希望图片尺寸暴增，可以在这里 crop 回去，
-            # 但既然要阴影，通常就需要保留扩大的尺寸。
-            buffer.append(shadow_in_process)
-        ctx.update_buffer(buffer).save_buffer(self.name()).success()
-
     def _apply_alpha_falloff(self, img: Image.Image, gamma: float) -> Image.Image:
         """
         对 Alpha 通道应用幂函数衰减
         公式: new_alpha = (alpha / 255) ^ gamma * 255
         gamma > 1 时，低透明度像素会被压制得更低，边缘更干净
+
+        Phase 5.6：避免 ``img.split()`` 把 RGB 三通道也分裂出来（对大图是
+        显著的内存拷贝）；改为 :meth:`Image.getchannel` 仅取 alpha；
+        numpy 全程 in-place 运算减少中间数组分配。
         """
-        r, g, b, a = img.split()
+        # 仅取 alpha 通道（不解构其他三通道，省一次 split 拷贝）
+        alpha_band = img.getchannel("A")
+        # uint8 → float32：复用底层缓冲区
+        alpha_array = np.asarray(alpha_band, dtype=np.float32)
 
-        # 转为 numpy 处理
-        alpha_array = np.array(a, dtype=np.float32) / 255.0
+        # in-place 缩放到 [0,1] 并应用幂函数（避免再分配中间数组）
+        alpha_array *= 1.0 / 255.0
+        np.power(alpha_array, gamma, out=alpha_array)
 
-        # 应用幂函数（缓动曲线）
-        alpha_array = np.power(alpha_array, gamma)
+        # 硬截断极低透明度（in-place mask）
+        alpha_array[alpha_array < 0.01] = 0.0
 
-        # 可选：设置硬截断阈值，彻底消除极低透明度
-        alpha_array[alpha_array < 0.01] = 0
-
-        # 转回 PIL
-        new_alpha = Image.fromarray((alpha_array * 255).astype(np.uint8), mode='L')
+        # in-place 缩放回 [0,255] 并转 uint8
+        alpha_array *= 255.0
+        new_alpha = Image.fromarray(alpha_array.astype(np.uint8), mode="L")
         img.putalpha(new_alpha)
         return img
 
     def name(self) -> str:
         return "shadow"
 
+@register("crop")
 class CropFilter(FilterProcessor):
 
     def process(self, ctx: PipelineContext):
@@ -623,20 +714,3 @@ class CropFilter(FilterProcessor):
         return "crop"
 
 
-if __name__ == '__main__':
-    buffer_path = '/Users/leslie/Workspace/3_PyProjs/semi-photo-utils/input/元旦/20250406-DSC_5779.jpg'
-    ctx = PipelineContext({
-        'buffer_path': [buffer_path],
-        'exif': get_exif(buffer_path)
-    })
-    test_filter = MarginWithRatioFilter()
-    # test_filter.process(ctx)
-    # ctx.save_buffer(test_filter.name(), True).success()
-
-    ctx.set('ratio', '2.25:1')
-    # test_filter.process(ctx)
-    # ctx.save_buffer(test_filter.name(), True).success()
-
-    ctx.set('margin_color', 'blue')
-    test_filter.process(ctx)
-    ctx.save_buffer(test_filter.name(), True).success()

@@ -1,19 +1,24 @@
 """模板管理器 — 针对窄窗口优化的紧凑布局。"""
 
-from pathlib import Path
-from typing import List, Dict, Any
 import json
 import logging
+from pathlib import Path
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QListWidget, QListWidgetItem,
-    QPushButton, QLabel, QMessageBox, QInputDialog
-)
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtWidgets import (
+    QGridLayout,
+    QInputDialog,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .models import AppState
-from .template_assembler import load_template, save_template, processors_to_state
+from .template_assembler import load_template, processors_to_state, save_template
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +145,7 @@ class TemplateManager(QWidget):
     def _generate_preview(self, name: str, tag: str, template_path: str):
         """生成模板预览文本。"""
         try:
-            with open(template_path, "r", encoding="utf-8") as f:
+            with open(template_path, encoding="utf-8") as f:
                 processors = json.load(f)
             names = [p.get("processor_name", "未知") for p in processors[:5]]
             text = f"<b>{name}</b>  [{tag}]<br><br>"
@@ -163,7 +168,7 @@ class TemplateManager(QWidget):
     
     def _on_template_applied(self):
         """应用选中模板。"""
-        name, path, tag = self._get_selected_template()
+        name, path, _tag = self._get_selected_template()
         if not name:
             QMessageBox.warning(self, "提示", "请先选择一个模板")
             return
@@ -172,8 +177,8 @@ class TemplateManager(QWidget):
             processors = load_template(Path(path))
             processors_to_state(processors, self.state)
             self.state.set_template(name)
+            # 信号会触发主窗口在状态栏显示提示（Phase 6.10）
             self.template_applied.emit(name)
-            QMessageBox.information(self, "成功", f"已应用模板：{name}")
         except Exception as e:
             QMessageBox.warning(self, "错误", f"应用模板失败: {e}")
     
@@ -205,7 +210,7 @@ class TemplateManager(QWidget):
     
     def _save_as_template(self):
         """另存为（复制现有模板）。"""
-        name, path, tag = self._get_selected_template()
+        name, path, _tag = self._get_selected_template()
         if not name:
             QMessageBox.warning(self, "提示", "请先选择一个模板")
             return
