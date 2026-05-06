@@ -1,7 +1,7 @@
 """Phase 6.9 — FieldRegistry 单元测试。
 
 覆盖：
-- 默认 8 个字段的 ID / label / source / jinja 查询
+- 默认 12 个字段的 ID / label / source / jinja 查询（Phase 16：params 套餐拆分为 4 个 + 新增 artist）
 - ``resolve`` 优先级（field_id → label_zh → source_id）
 - ``labels_for_category`` 分组过滤
 - ``gui_choices`` 排除 ``empty``
@@ -25,21 +25,25 @@ from gui.field_registry import (
 # ============================================================
 
 class TestFieldRegistryLookups:
-    """验证默认 8 个字段每种查询方式都能命中。"""
+    """验证默认 12 个字段每种查询方式都能命中。"""
 
     def setup_method(self):
         self.reg = FieldRegistry()
 
-    def test_all_returns_eight_default_fields(self):
+    def test_all_returns_default_fields(self):
         all_fields = self.reg.all()
-        assert len(all_fields) == 8
+        assert len(all_fields) == 12
         ids = [f.field_id for f in all_fields]
         assert ids == [
             "camera_model",
             "lens_model",
-            "params",
+            "focal_length",
+            "aperture",
+            "shutter",
+            "iso",
             "datetime",
             "make",
+            "artist",
             "gps",
             "custom_text",
             "empty",
@@ -57,9 +61,13 @@ class TestFieldRegistryLookups:
 
     def test_get_by_label(self):
         assert self.reg.get_by_label("镜头型号").field_id == "lens_model"
-        assert self.reg.get_by_label("拍摄参数").field_id == "params"
+        assert self.reg.get_by_label("焦距").field_id == "focal_length"
+        assert self.reg.get_by_label("光圈").field_id == "aperture"
+        assert self.reg.get_by_label("快门").field_id == "shutter"
+        assert self.reg.get_by_label("ISO").field_id == "iso"
         assert self.reg.get_by_label("拍摄日期").field_id == "datetime"
         assert self.reg.get_by_label("厂商品牌").field_id == "make"
+        assert self.reg.get_by_label("作者").field_id == "artist"
         assert self.reg.get_by_label("地理位置").field_id == "gps"
         assert self.reg.get_by_label("自定义文本").field_id == "custom_text"
         assert self.reg.get_by_label("空").field_id == "empty"
@@ -70,8 +78,12 @@ class TestFieldRegistryLookups:
     def test_get_by_source(self):
         assert self.reg.get_by_source("exif:CameraModelName").field_id == "camera_model"
         assert self.reg.get_by_source("exif:LensModel").field_id == "lens_model"
-        assert self.reg.get_by_source("exif:params").field_id == "params"
+        assert self.reg.get_by_source("exif:FocalLengthIn35mmFormat").field_id == "focal_length"
+        assert self.reg.get_by_source("exif:Aperture").field_id == "aperture"
+        assert self.reg.get_by_source("exif:ShutterSpeed").field_id == "shutter"
+        assert self.reg.get_by_source("exif:ISO").field_id == "iso"
         assert self.reg.get_by_source("exif:DateTimeOriginal").field_id == "datetime"
+        assert self.reg.get_by_source("exif:Artist").field_id == "artist"
         assert self.reg.get_by_source("custom").field_id == "custom_text"
 
     def test_get_by_source_unknown(self):
@@ -144,10 +156,15 @@ class TestCategoryFiltering:
         labels = self.reg.labels_for_category("exif")
         assert "相机型号" in labels
         assert "镜头型号" in labels
-        assert "拍摄参数" in labels
+        assert "焦距" in labels
+        assert "光圈" in labels
+        assert "快门" in labels
+        assert "ISO" in labels
         assert "拍摄日期" in labels
         assert "厂商品牌" in labels
+        assert "作者" in labels
         assert "地理位置" in labels
+        assert "拍摄参数" not in labels  # Phase 16：套餐已拆分
         assert "自定义文本" not in labels  # custom 分组
         assert "空" not in labels           # empty 分组
 
@@ -165,7 +182,7 @@ class TestCategoryFiltering:
     def test_gui_choices_excludes_empty(self):
         choices = self.reg.gui_choices()
         assert "空" not in choices
-        assert len(choices) == 7  # 8 - 1
+        assert len(choices) == 11  # 12 - 1
         assert choices[0] == "相机型号"  # 注册顺序保留
 
 
@@ -210,8 +227,8 @@ class TestDefaultRegistry:
         assert a is b
         assert a is DEFAULT_REGISTRY
 
-    def test_default_registry_has_eight_fields(self):
-        assert len(get_default_registry().all()) == 8
+    def test_default_registry_has_default_fields(self):
+        assert len(get_default_registry().all()) == 12
 
 
 # ============================================================

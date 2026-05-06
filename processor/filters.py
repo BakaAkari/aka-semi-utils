@@ -735,3 +735,224 @@ class CropFilter(FilterProcessor):
         return "crop"
 
 
+@register("signature")
+class SignatureFilter(FilterProcessor):
+    """签名水印滤镜（Phase 18）— 在【原图区域内】粘贴用户签名 PNG。
+
+    设计要点：
+
+    - **运行时 alpha tint**：用户上传一张签名图（推荐 alpha 通道干净的黑色 PNG），
+      处理器把 alpha 当蒙版，按 ``signature_color`` 着色后 paste 到原图区域。
+    - **粘贴区域**：原图区域 = 画布去掉 watermark margins 后的内层矩形：
+      ``[top_margin, canvas.height - bottom_margin) × [left_margin, canvas.width - right_margin)``。
+      若 watermark 未启用，所有 margins 都是 0 → 区域 = 整张画布。
+    - **9 宫格位置**：``{top|middle|bottom}_{left|center|right}``，共 9 种锚点。
+    - **四向偏移**：``signature_offset_top/bottom/left/right`` 像素值，正向"内推"。
+      仅当前 ``position`` 锚点对应方向的 offset 生效（其余被忽略）。
+      例：``top_left`` 用 ``offset_top`` 与 ``offset_left``；
+      ``bottom_right`` 用 ``offset_bottom`` 与 ``offset_right``；
+      ``middle_center`` 没有锚边，所有 offset 都被忽略。
+    - **尺寸策略**：``target_h = image_area_height * signature_height_ratio * signature_scale``，
+      宽度按原签名比例等比缩放。Phase 20 引入 ``signature_scale``（默认 1.0，
+      范围 0.1~5.0），允许用户在 height_ratio 计算出的尺寸基础上再整体缩放。
+      若结果超出原图区域，自动等比缩到区域内。
+    - **接入位置**：在 ``watermark`` 之后；若签名文件缺失，记 warning 并直通。
+    """
+
+    # 缺省占比：签名高度 = 原图区域高度 * 该值
+    DEFAULT_HEIGHT_RATIO = 0.05
+    # height_ratio clamp 范围
+    MIN_HEIGHT_RATIO = 0.005
+    MAX_HEIGHT_RATIO = 1.0
+    # Phase 20：等比缩放倍数 clamp 范围（在 height_ratio 计算出的尺寸基础上再乘）
+    DEFAULT_SCALE = 1.0
+    MIN_SCALE = 0.1
+    MAX_SCALE = 5.0
+    # 9 宫格位置常量
+    _VALID_POSITIONS = frozenset({
+        "top_left", "top_center", "top_right",
+        "middle_left", "middle_center", "middle_right",
+        "bottom_left", "bottom_center", "bottom_right",
+    })
+
+    def process(self, ctx: PipelineContext):
+        if not ctx.get("signature_enabled", False):
+            ctx.success()
+            return
+
+        sig_path = ctx.get("signature_path", "")
+        if not sig_path:
+            logger.warning("[SignatureFilter] signature_enabled=True 但未提供 signature_path，跳过。")
+            ctx.success()
+            return
+
+        buffer = ctx.get_buffer()
+        if not buffer:
+            ctx.success()
+            return
+        canvas = buffer[0]
+        if canvas.mode != "RGBA":
+            canvas = canvas.convert("RGBA")
+
+        # 加载签名图
+        try:
+            from core.image_io import load_logo
+            sig_img = load_logo(sig_path)
+        except FileNotFoundError:
+            logger.warning(f"[SignatureFilter] 签名文件不存在: {sig_path}，跳过。")
+            ctx.success()
+            return
+
+        # 计算"原图区域"边界（剥掉 WatermarkFilter 添加的四边 margin）
+        top_m = max(0, ctx.getint("top_margin", 0))
+        bottom_m = max(0, ctx.getint("bottom_margin", 0))
+        left_m = max(0, ctx.getint("left_margin", 0))
+        right_m = max(0, ctx.getint("right_margin", 0))
+
+        area_left = left_m
+        area_top = top_m
+        area_right = canvas.width - right_m
+        area_bottom = canvas.height - bottom_m
+        area_w = max(0, area_right - area_left)
+        area_h = max(0, area_bottom - area_top)
+        if area_w <= 0 or area_h <= 0:
+            logger.warning("[SignatureFilter] 原图区域尺寸非正，跳过。")
+            ctx.success()
+            return
+
+        # 高度比例（基于原图区域高度）
+        try:
+            height_ratio = float(ctx.get("signature_height_ratio", self.DEFAULT_HEIGHT_RATIO))
+        except (TypeError, ValueError):
+            height_ratio = self.DEFAULT_HEIGHT_RATIO
+        height_ratio = max(self.MIN_HEIGHT_RATIO, min(self.MAX_HEIGHT_RATIO, height_ratio))
+
+        # Phase 20：用户自定义的等比缩放倍数（在 height_ratio 之上再乘）
+        try:
+            user_scale = float(ctx.get("signature_scale", self.DEFAULT_SCALE))
+        except (TypeError, ValueError):
+            user_scale = self.DEFAULT_SCALE
+        user_scale = max(self.MIN_SCALE, min(self.MAX_SCALE, user_scale))
+
+        target_h = max(1, int(area_h * height_ratio * user_scale))
+        if sig_img.height > 0:
+            ratio = target_h / sig_img.height
+            target_w = max(1, round(sig_img.width * ratio))
+        else:
+            target_w = target_h
+        # 防止单边超出区域：若 target_w > area_w，按 area_w 等比缩
+        if target_w > area_w:
+            ratio = area_w / target_w
+            target_w = max(1, area_w)
+            target_h = max(1, int(target_h * ratio))
+        # 防止超出区域高度：若 target_h > area_h（缩放过大时），按 area_h 等比缩
+        if target_h > area_h:
+            ratio = area_h / target_h
+            target_h = max(1, area_h)
+            target_w = max(1, int(target_w * ratio))
+        sig_resized = sig_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+        # 着色：以 alpha 蒙版替换为指定颜色
+        sig_color_raw = ctx.get("signature_color", "#000000")
+        try:
+            tint_rgba = _parse_color_safe(sig_color_raw)
+        except ValueError:
+            logger.warning(f"[SignatureFilter] 无法解析颜色 {sig_color_raw!r}，回退黑色。")
+            tint_rgba = (0, 0, 0, 255)
+        tinted = self._apply_alpha_tint(sig_resized, tint_rgba)
+
+        # 9 宫格位置 + 四向偏移
+        position = str(ctx.get("signature_position", "bottom_right")).lower()
+        if position not in self._VALID_POSITIONS:
+            logger.warning(f"[SignatureFilter] 未知位置 {position!r}，回退 bottom_right。")
+            position = "bottom_right"
+
+        offset_top = max(0, ctx.getint("signature_offset_top", 0))
+        offset_bottom = max(0, ctx.getint("signature_offset_bottom", 0))
+        offset_left = max(0, ctx.getint("signature_offset_left", 0))
+        offset_right = max(0, ctx.getint("signature_offset_right", 0))
+
+        paste_x, paste_y = self._compute_paste_xy(
+            position=position,
+            area_left=area_left, area_top=area_top,
+            area_right=area_right, area_bottom=area_bottom,
+            target_w=target_w, target_h=target_h,
+            offset_top=offset_top, offset_bottom=offset_bottom,
+            offset_left=offset_left, offset_right=offset_right,
+        )
+
+        # 边界保护：把 paste 框 clamp 进区域
+        paste_x = max(area_left, min(paste_x, area_right - target_w))
+        paste_y = max(area_top, min(paste_y, area_bottom - target_h))
+
+        canvas.paste(tinted, (paste_x, paste_y), mask=tinted)
+        ctx.update_buffer([canvas]).save_buffer(self.name()).success()
+
+    def name(self) -> str:
+        return "signature"
+
+    @staticmethod
+    def _compute_paste_xy(
+        *,
+        position: str,
+        area_left: int, area_top: int,
+        area_right: int, area_bottom: int,
+        target_w: int, target_h: int,
+        offset_top: int, offset_bottom: int,
+        offset_left: int, offset_right: int,
+    ) -> tuple[int, int]:
+        """根据 9 宫格位置 + 四向 offset 计算签名左上角粘贴坐标（绝对画布坐标）。
+
+        offset 语义：正向"内推"。例如 ``bottom_right`` 锚点下，
+        ``offset_bottom=10`` 表示离区域底边内推 10px；``offset_right=10`` 同理。
+        """
+        # 垂直
+        v, _, h = position.partition("_")
+        if v == "top":
+            paste_y = area_top + offset_top
+        elif v == "bottom":
+            paste_y = area_bottom - target_h - offset_bottom
+        else:  # middle
+            paste_y = area_top + (area_bottom - area_top - target_h) // 2
+
+        # 水平
+        if h == "left":
+            paste_x = area_left + offset_left
+        elif h == "right":
+            paste_x = area_right - target_w - offset_right
+        else:  # center
+            paste_x = area_left + (area_right - area_left - target_w) // 2
+
+        return paste_x, paste_y
+
+    @staticmethod
+    def _apply_alpha_tint(img: Image.Image, rgba: tuple[int, int, int, int]) -> Image.Image:
+        """Phase 19：以 RGB 灰度反转作蒙版（白底→透明，黑色笔画→不透明）。
+
+        永远忽略源图的 alpha 通道 — 统一处理 JPG / RGB / RGBA 三类素材。
+        典型用例：用户上传白底黑字签名扫描件，只有笔画部分会被着色显形。
+
+        - ``rgba[0:3]`` 决定笔画颜色。
+        - ``rgba[3] < 255`` 时整体蒙版按比例缩放，允许半透明签名。
+        """
+        # 强制丢弃任何 alpha 通道，统一从 RGB 推导蒙版
+        rgb = img.convert("RGB")
+        gray = rgb.convert("L")
+        mask = Image.eval(gray, lambda v: 255 - v)  # 深色 → 高不透明，白色 → 透明
+
+        # 全局 alpha 缩放
+        if rgba[3] < 255:
+            scale = rgba[3] / 255.0
+            mask_arr = np.asarray(mask, dtype=np.float32) * scale
+            mask = Image.fromarray(mask_arr.astype(np.uint8), mode="L")
+
+        # 纯色填充层 + 蒙版 = tinted 图
+        solid = Image.new("RGBA", img.size, (rgba[0], rgba[1], rgba[2], 255))
+        solid.putalpha(mask)
+        return solid
+
+
+def _parse_color_safe(color):
+    """局部 helper：复用 :func:`processor.core._parse_color` 但 import 局部化。"""
+    from processor.core import _parse_color
+    return _parse_color(color)

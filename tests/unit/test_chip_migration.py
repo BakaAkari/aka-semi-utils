@@ -55,17 +55,28 @@ class TestLegacyFieldsMigration:
     def test_legacy_all_fields_supported(self):
         data = {
             "fields": [
-                "相机型号", "镜头型号", "拍摄参数",
-                "拍摄日期", "厂商品牌", "地理位置",
+                "相机型号", "镜头型号", "焦距", "光圈", "快门", "ISO",
+                "拍摄日期", "厂商品牌", "作者", "地理位置",
                 "自定义文本", "空",
             ],
         }
         corner = _corner_from_dict(data)
         ids = [c.field_id for c in corner.chips]
         assert ids == [
-            "camera_model", "lens_model", "params",
-            "datetime", "make", "gps",
+            "camera_model", "lens_model", "focal_length", "aperture", "shutter", "iso",
+            "datetime", "make", "artist", "gps",
             "custom_text", "empty",
+        ]
+
+    def test_legacy_label_pai_she_can_shu_expands_to_four_chips(self):
+        """Phase 16：legacy 中文标签 ``"拍摄参数"`` 静默展开为 4 个独立 chip。"""
+        data = {"fields": ["相机型号", "拍摄参数", "镜头型号"]}
+        corner = _corner_from_dict(data)
+        ids = [c.field_id for c in corner.chips]
+        assert ids == [
+            "camera_model",
+            "focal_length", "aperture", "shutter", "iso",
+            "lens_model",
         ]
 
     def test_legacy_empty_fields_list(self):
@@ -152,14 +163,58 @@ class TestChipsPreferredOverFields:
     def test_chips_present_skips_fields_migration(self):
         """同时含 chips 与 fields 时，应使用 chips。"""
         data = {
-            "chips": [{"field_id": "params"}],
+            "chips": [{"field_id": "make"}],
             "fields": ["相机型号", "镜头型号"],  # 应被忽略
         }
         corner = _corner_from_dict(data)
         assert len(corner.chips) == 1
-        assert corner.chips[0].field_id == "params"
+        assert corner.chips[0].field_id == "make"
         # fields 仍被保留作为兼容数据
         assert corner.fields == ["相机型号", "镜头型号"]
+
+
+# ============================================================
+# Phase 16：legacy ``params`` chip 静默展开
+# ============================================================
+
+class TestLegacyParamsExpansion:
+    """Phase 16：旧 user.json 里 ``field_id="params"`` 的 chip 应在反序列化时
+    静默展开为 4 个独立 chip（focal_length / aperture / shutter / iso），
+    并继承原 chip 的 font / color。"""
+
+    def test_params_chip_expands_to_four(self):
+        data = {"chips": [{"field_id": "params"}]}
+        corner = _corner_from_dict(data)
+        ids = [c.field_id for c in corner.chips]
+        assert ids == ["focal_length", "aperture", "shutter", "iso"]
+
+    def test_params_chip_inherits_font_and_color(self):
+        data = {"chips": [{
+            "field_id": "params",
+            "font": "Roboto-Bold.ttf",
+            "color": "#FF00AA",
+            "custom_text": "should-not-leak",
+        }]}
+        corner = _corner_from_dict(data)
+        assert len(corner.chips) == 4
+        for c in corner.chips:
+            assert c.font == "Roboto-Bold.ttf"
+            assert c.color == "#FF00AA"
+            assert c.custom_text == ""  # 拆分后子 chip 不携带原 custom_text
+
+    def test_params_chip_mixed_with_other_chips(self):
+        data = {"chips": [
+            {"field_id": "camera_model"},
+            {"field_id": "params"},
+            {"field_id": "lens_model"},
+        ]}
+        corner = _corner_from_dict(data)
+        ids = [c.field_id for c in corner.chips]
+        assert ids == [
+            "camera_model",
+            "focal_length", "aperture", "shutter", "iso",
+            "lens_model",
+        ]
 
 
 # ============================================================

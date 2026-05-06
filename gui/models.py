@@ -122,10 +122,21 @@ class AdvancedConfig:
     concat_direction: str = "vertical"  # horizontal / vertical
     alignment_mode: str = "center"      # top / center / bottom
 
-    # 签名
+    # 签名（Phase 18：定位到图像区域内 + 9 宫格 + 四向偏移）
     signature_enabled: bool = False
     signature_path: str = ""
-    signature_color: str = "black"
+    signature_color: str = "#000000"               # 任意 hex / 颜色名；运行时按 alpha 蒙版 tint
+    # 9 宫格之一：top_left/top_center/top_right/middle_left/middle_center/middle_right
+    #            /bottom_left/bottom_center/bottom_right
+    signature_position: str = "bottom_right"
+    signature_height_ratio: float = 0.05           # 相对【原图区域】高度的占比（0~1），默认 5%
+    # Phase 20：在 height_ratio 计算出的尺寸基础上再整体等比缩放（保持宽高比）
+    signature_scale: float = 1.0                   # 0.1~5.0
+    # 四向偏移（像素，正向"内推" — 由 position 锚点决定哪两个生效）
+    signature_offset_top: int = 0                  # top_* 锚点：从图像区域顶部内推
+    signature_offset_bottom: int = 0               # bottom_* 锚点：从图像区域底部内推
+    signature_offset_left: int = 0                 # *_left 锚点：从图像区域左边内推
+    signature_offset_right: int = 0                # *_right 锚点：从图像区域右边内推
 
 
 @dataclass
@@ -155,6 +166,28 @@ def _dc_from_dict(cls, data: dict[str, Any] | None):
         return cls()
 
 
+# Phase 16：旧 ``params`` 套餐的拆分目标 — 反序列化时静默展开为 4 个独立 chip。
+_LEGACY_PARAMS_EXPANSION: tuple[str, ...] = (
+    "focal_length",
+    "aperture",
+    "shutter",
+    "iso",
+)
+
+
+def _expand_legacy_params(chip: FieldChip) -> list[FieldChip]:
+    """把 legacy ``field_id="params"`` 的 chip 展开为 4 个独立子 chip，继承样式。"""
+    return [
+        FieldChip(
+            field_id=fid,
+            custom_text="",         # 套餐拆分后子 chip 不携带自定义文本
+            color=chip.color,       # 继承原 chip 颜色
+            font=chip.font,         # 继承原 chip 字体
+        )
+        for fid in _LEGACY_PARAMS_EXPANSION
+    ]
+
+
 def _corner_from_dict(data: dict[str, Any] | None) -> CornerConfig:
     """从 dict 还原 :class:`CornerConfig`（含 ``chips`` 与旧 ``fields`` 双轨兼容）。
 
@@ -163,6 +196,8 @@ def _corner_from_dict(data: dict[str, Any] | None) -> CornerConfig:
     - 若 dict 含 ``chips``：按新模型反序列化为 ``List[FieldChip]``
     - 若 dict 仅含 ``fields``（老 user.json）：把每个中文标签转成对应 ``FieldChip(field_id=...)``
     - ``font`` / ``color`` 缺失时为空字符串（含义：继承上级）
+    - Phase 16：legacy ``field_id="params"`` / 标签 ``"拍摄参数"`` 静默展开为
+      ``focal_length`` / ``aperture`` / ``shutter`` / ``iso`` 4 个独立 chip。
     """
     if not isinstance(data, dict):
         return CornerConfig()
@@ -172,13 +207,24 @@ def _corner_from_dict(data: dict[str, Any] | None) -> CornerConfig:
     if isinstance(raw_chips, list):
         for c in raw_chips:
             if isinstance(c, dict):
-                chips.append(_dc_from_dict(FieldChip, c))
+                chip = _dc_from_dict(FieldChip, c)
+                if chip.field_id == "params":
+                    chips.extend(_expand_legacy_params(chip))
+                else:
+                    chips.append(chip)
     else:
         # 老 user.json：从中文标签 fields 列表迁移
         from gui.field_registry import get_default_registry  # 避免循环导入
         registry = get_default_registry()
         for label in data.get("fields", []) or []:
             if not isinstance(label, str):
+                continue
+            # Phase 16：legacy "拍摄参数" 标签也直接展开为 4 个独立 chip
+            if label == "拍摄参数":
+                chips.extend(
+                    FieldChip(field_id=fid, custom_text="")
+                    for fid in _LEGACY_PARAMS_EXPANSION
+                )
                 continue
             fdef = registry.get_by_label(label) or registry.resolve(label)
             chips.append(

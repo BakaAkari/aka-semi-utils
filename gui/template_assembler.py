@@ -65,6 +65,18 @@ PROCESSOR_MAP: dict[str, dict[str, Any]] = {
         "target": "watermark",
         "processor_name": "watermark",
     },
+    # Phase 17：签名 — 串接在 watermark 之后，仅当 signature_enabled 时生成
+    "signature": {
+        "fields": [
+            "signature_enabled",
+            "signature_path",
+            "signature_color",
+            "signature_position",
+            "signature_height_ratio",
+        ],
+        "target": "signature",
+        "processor_name": "signature",
+    },
 }
 
 
@@ -121,6 +133,15 @@ def state_to_processors(state: AppState) -> list[dict[str, Any]]:
                 processors.append({
                     "processor_name": processor_name,
                     **watermark_config,
+                })
+
+        elif target == "signature":
+            # Phase 17：签名 processor — 仅在启用且路径非空时输出
+            signature_config = _build_signature_config(state)
+            if signature_config:
+                processors.append({
+                    "processor_name": processor_name,
+                    **signature_config,
                 })
 
     return processors
@@ -269,3 +290,32 @@ def _build_watermark_config(state: AppState) -> dict[str, Any]:
         config["center_logo_height"] = state.advanced.logo_height_px
 
     return config
+
+
+def _build_signature_config(state: AppState) -> dict[str, Any]:
+    """Phase 18：从 AppState 构建 SignatureFilter 配置。
+
+    返回空 dict 表示不应生成此 processor（未启用 / 无路径）。
+
+    SignatureFilter 在【原图区域】内定位 — 区域由 ctx 中的
+    top/bottom/left/right_margin 计算（由 WatermarkFilter / MarginFilter
+    在前序节点写入）。本函数无需透传任何 margin 字段。
+    """
+    cfg = state.advanced
+    if not cfg.signature_enabled:
+        return {}
+    if not cfg.signature_path:
+        return {}
+
+    return {
+        "signature_enabled": True,
+        "signature_path": cfg.signature_path,
+        "signature_color": cfg.signature_color,
+        "signature_position": cfg.signature_position,
+        "signature_height_ratio": cfg.signature_height_ratio,
+        "signature_scale": cfg.signature_scale,
+        "signature_offset_top": cfg.signature_offset_top,
+        "signature_offset_bottom": cfg.signature_offset_bottom,
+        "signature_offset_left": cfg.signature_offset_left,
+        "signature_offset_right": cfg.signature_offset_right,
+    }

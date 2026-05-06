@@ -29,13 +29,6 @@ from dataclasses import dataclass
 
 # ---- 公共 Jinja 片段（避免在多个地方重复硬编码） ----
 
-_JINJA_PARAMS = (
-    "{{exif.FocalLengthIn35mmFormat|replace(' ', '')|default('-')}} "
-    "f/{{exif.ApertureValue or exif.FNumber|default('-')}} "
-    "{{exif.ShutterSpeed or exif.ShutterSpeedValue|default('-')}}s "
-    "ISO{{exif.ISO|default('0')}}"
-)
-
 _JINJA_DATE = (
     "{{(exif.DateTimeOriginal or exif.CreateDate or exif.DigitalCreationDate "
     "or exif.DateCreated or exif.DateTimeCreated "
@@ -72,10 +65,31 @@ _FIELDS: list[FieldDef] = [
         category="exif",
     ),
     FieldDef(
-        field_id="params",
-        label_zh="拍摄参数",
-        jinja_template=_JINJA_PARAMS,
-        source_id="exif:params",
+        field_id="focal_length",
+        label_zh="焦距",
+        jinja_template="{{exif.FocalLengthIn35mmFormat|replace(' ', '')|default('-')}}",
+        source_id="exif:FocalLengthIn35mmFormat",
+        category="exif",
+    ),
+    FieldDef(
+        field_id="aperture",
+        label_zh="光圈",
+        jinja_template="f/{{exif.ApertureValue or exif.FNumber|default('-')}}",
+        source_id="exif:Aperture",
+        category="exif",
+    ),
+    FieldDef(
+        field_id="shutter",
+        label_zh="快门",
+        jinja_template="{{exif.ShutterSpeed or exif.ShutterSpeedValue|default('-')}}s",
+        source_id="exif:ShutterSpeed",
+        category="exif",
+    ),
+    FieldDef(
+        field_id="iso",
+        label_zh="ISO",
+        jinja_template="ISO{{exif.ISO|default('0')}}",
+        source_id="exif:ISO",
         category="exif",
     ),
     FieldDef(
@@ -90,6 +104,13 @@ _FIELDS: list[FieldDef] = [
         label_zh="厂商品牌",
         jinja_template="{{ exif.Make|default('-') }}",
         source_id="exif:Make",
+        category="exif",
+    ),
+    FieldDef(
+        field_id="artist",
+        label_zh="作者",
+        jinja_template="{{ exif.Artist|default('-') }}",
+        source_id="exif:Artist",
         category="exif",
     ),
     FieldDef(
