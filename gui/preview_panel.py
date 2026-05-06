@@ -152,28 +152,39 @@ class PreviewPanel(QWidget):
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._do_render)
 
+        # Phase 27：active=False 时跳过所有渲染请求（侧栏折叠态省 CPU）
+        # 默认 False — 由父容器（CollapsiblePreviewSidebar）展开时 set_active(True)
+        self._active: bool = False
+
         self._setup_ui()
 
-        # 订阅状态变化
+        # 订阅状态变化（信号订阅始终保留，是否真渲染由 _active 决定）
         state.files_changed.connect(self._schedule_render)
         state.watermark_changed.connect(self._schedule_render)
         state.advanced_changed.connect(self._schedule_render)
         # 模板切换 / 自定义文本 / logo 都已由 watermark_changed 涵盖
 
-        # 首次进入：若已有文件则立即渲染
-        if self.state.selected_files:
-            self._schedule_render()
-        else:
-            self._set_status("（尚未选择图片）")
+        self._set_status("（预览已折叠）")
 
     def _setup_ui(self) -> None:
+        # Phase 27.6：让面板自身 + 所有子 QLabel 默认透明，避免全局 QSS 的
+        # `QWidget { background-color: #121212 }` 在嵌入彩色容器（如侧栏 #2B2B2B）
+        # 时露出更深色的标签背景色块。image_label 等显式 setStyleSheet 的子项
+        # 不受影响（更具体的规则优先）。
+        self.setStyleSheet(
+            "PreviewPanel { background: transparent; } "
+            "PreviewPanel > QLabel { background: transparent; }"
+        )
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
         # 标题行
         header = QHBoxLayout()
-        header.addWidget(QLabel("实时预览"))
+        title = QLabel("实时预览")
+        title.setStyleSheet("background: transparent; font-weight: bold;")
+        header.addWidget(title)
         header.addStretch(1)
         self.refresh_btn = QPushButton("刷新")
         self.refresh_btn.setFixedWidth(60)
@@ -201,8 +212,35 @@ class PreviewPanel(QWidget):
 
     # ---- API ----
 
+    def set_active(self, active: bool) -> None:
+        """Phase 27：由父容器控制是否参与渲染。
+
+        - ``active=False``：取消正在排队的 debounce 计时器 + 中止运行中的渲染线程；
+          后续 ``_schedule_render`` 调用全部短路 return（节省 CPU）。
+        - ``active=True``：若已有文件，立即触发一次渲染让用户看到当前状态。
+        """
+        if self._active == active:
+            return
+        self._active = active
+        if not active:
+            # 折叠：停掉一切渲染相关
+            self._timer.stop()
+            if self._thread is not None:
+                self._thread.cancel()
+                self._thread.quit()
+                self._thread = None
+            self._set_status("（预览已折叠）")
+        else:
+            # 展开：立即渲染一次（绕过 debounce）
+            if self.state.selected_files:
+                self._do_render()
+            else:
+                self._set_status("（尚未选择图片）")
+
     def _schedule_render(self, *_args, **_kwargs) -> None:
-        """请求一次渲染（debounce）。"""
+        """请求一次渲染（debounce）。Phase 27：折叠态短路。"""
+        if not self._active:
+            return
         self._timer.start(self.DEBOUNCE_MS)
 
     def _do_render(self) -> None:

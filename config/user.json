@@ -8,6 +8,12 @@
     "left_top": {
       "chips": [
         {
+          "field_id": "make",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        },
+        {
           "field_id": "camera_model",
           "custom_text": "",
           "font": "",
@@ -17,49 +23,53 @@
       "fields": [
         "相机型号"
       ],
-      "separator": " · ",
+      "separator": " ",
       "font": "",
       "color": ""
     },
     "left_bottom": {
       "chips": [
         {
-          "field_id": "lens_model",
+          "field_id": "focal_length",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        },
+        {
+          "field_id": "aperture",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        },
+        {
+          "field_id": "shutter",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        },
+        {
+          "field_id": "iso",
           "custom_text": "",
           "font": "",
           "color": ""
         }
       ],
       "fields": [],
-      "separator": "   ",
+      "separator": " ",
       "font": "",
       "color": ""
     },
     "right_top": {
-      "chips": [
-        {
-          "field_id": "custom_text",
-          "custom_text": "Akari",
-          "font": "Hannotate SC",
-          "color": ""
-        }
-      ],
+      "chips": [],
       "fields": [],
-      "separator": " · ",
+      "separator": " ",
       "font": "",
       "color": ""
     },
     "right_bottom": {
-      "chips": [
-        {
-          "field_id": "datetime",
-          "custom_text": "",
-          "font": "",
-          "color": ""
-        }
-      ],
+      "chips": [],
       "fields": [],
-      "separator": " · ",
+      "separator": " ",
       "font": "",
       "color": ""
     }
@@ -96,13 +106,11 @@
     "concat_direction": "vertical",
     "alignment_mode": "center",
     "signature_enabled": true,
-    "signature_path": "/Users/baka_akari/Downloads/font-image (2).png",
-    "signature_color": "#FFFFFF",
+    "signature_path": "/Users/baka_akari/Pictures/20260506-182912.png",
+    "signature_invert_mono": true,
     "signature_position": "bottom_center",
-    "signature_height_ratio": 0.4,
-    "signature_offset_top": 0,
-    "signature_offset_bottom": 0,
-    "signature_offset_left": 0,
-    "signature_offset_right": 0
+    "signature_width_ratio": 0.2,
+    "signature_offset_x": 0,
+    "signature_offset_y": -1006
   }
 }

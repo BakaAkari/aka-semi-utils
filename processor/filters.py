@@ -737,37 +737,42 @@ class CropFilter(FilterProcessor):
 
 @register("signature")
 class SignatureFilter(FilterProcessor):
-    """签名水印滤镜（Phase 18）— 在【原图区域内】粘贴用户签名 PNG。
+    """签名水印滤镜（Phase 26）— 在【原图区域内】粘贴用户签名图（保留彩色像素 + 黑白二值切换）。
 
     设计要点：
 
-    - **运行时 alpha tint**：用户上传一张签名图（推荐 alpha 通道干净的黑色 PNG），
-      处理器把 alpha 当蒙版，按 ``signature_color`` 着色后 paste 到原图区域。
+    - **像素三分类**（Phase 26 重构）：处理器把签名图每个像素归为三类：
+
+      1. *近白*（R/G/B 均 ≥ 240 且接近灰度）→ alpha 置 0（视为白底/纸张）；
+      2. *近黑*（R/G/B 均 ≤ 20 且接近灰度）→ 笔画像素，根据
+         ``signature_invert_mono`` 切换为黑（False）或白（True）；
+      3. *彩色*（任何带色相的像素，如签名上的红点）→ **RGB 完全保留**，
+         alpha 由 RGB 亮度推导以处理抗锯齿边缘。
+
+      → 用户的彩色装饰（红点 / 印章 / 颜色笔画）永不会被破坏，
+      ``signature_invert_mono`` 仅在黑↔白笔画间切换。
     - **粘贴区域**：原图区域 = 画布去掉 watermark margins 后的内层矩形：
       ``[top_margin, canvas.height - bottom_margin) × [left_margin, canvas.width - right_margin)``。
       若 watermark 未启用，所有 margins 都是 0 → 区域 = 整张画布。
     - **9 宫格位置**：``{top|middle|bottom}_{left|center|right}``，共 9 种锚点。
-    - **四向偏移**：``signature_offset_top/bottom/left/right`` 像素值，正向"内推"。
-      仅当前 ``position`` 锚点对应方向的 offset 生效（其余被忽略）。
-      例：``top_left`` 用 ``offset_top`` 与 ``offset_left``；
-      ``bottom_right`` 用 ``offset_bottom`` 与 ``offset_right``；
-      ``middle_center`` 没有锚边，所有 offset 都被忽略。
-    - **尺寸策略**：``target_h = image_area_height * signature_height_ratio * signature_scale``，
-      宽度按原签名比例等比缩放。Phase 20 引入 ``signature_scale``（默认 1.0，
-      范围 0.1~5.0），允许用户在 height_ratio 计算出的尺寸基础上再整体缩放。
-      若结果超出原图区域，自动等比缩到区域内。
+    - **偏移**（Phase 24 — 行业标准 anchor + offset 双轴）：
+      ``signature_offset_x`` 与 ``signature_offset_y`` 为带正负号的像素值，
+      在【任意 position 锚点下都生效】（与旧版"四向只两向有效"行为相反）。
+      语义：``offset_x`` 正向 → 向右 / 负向 → 向左；
+            ``offset_y`` 正向 → 向下 / 负向 → 向上。
+      计算顺序：① position 决定 base 坐标 → ② 加上 (offset_x, offset_y) 全局位移向量。
+    - **尺寸策略**（Phase 22 — 分辨率无关）：``target_w = area_w * signature_width_ratio``，
+      高度按签名 PNG 原始宽高比等比推算 ``target_h = target_w * sig_img.height / sig_img.width``。
+      ``signature_width_ratio`` 范围 0.01~1.0（默认 0.15），直接表示"签名宽占图宽的比例"，
+      与图像分辨率解耦 — 同一比例在 1080×720 与 6000×4000 上视觉占比一致。
+      若高度超出区域，按 area_h 等比 fit。
     - **接入位置**：在 ``watermark`` 之后；若签名文件缺失，记 warning 并直通。
     """
 
-    # 缺省占比：签名高度 = 原图区域高度 * 该值
-    DEFAULT_HEIGHT_RATIO = 0.05
-    # height_ratio clamp 范围
-    MIN_HEIGHT_RATIO = 0.005
-    MAX_HEIGHT_RATIO = 1.0
-    # Phase 20：等比缩放倍数 clamp 范围（在 height_ratio 计算出的尺寸基础上再乘）
-    DEFAULT_SCALE = 1.0
-    MIN_SCALE = 0.1
-    MAX_SCALE = 5.0
+    # 宽度占图比例（target_w = area_w × ratio）
+    DEFAULT_WIDTH_RATIO = 0.15
+    MIN_WIDTH_RATIO = 0.01
+    MAX_WIDTH_RATIO = 1.0
     # 9 宫格位置常量
     _VALID_POSITIONS = frozenset({
         "top_left", "top_center", "top_right",
@@ -820,65 +825,46 @@ class SignatureFilter(FilterProcessor):
             ctx.success()
             return
 
-        # 高度比例（基于原图区域高度）
+        # Phase 22：宽度占图比例 — target_w = area_w × ratio；高度按 PNG 原宽高比
         try:
-            height_ratio = float(ctx.get("signature_height_ratio", self.DEFAULT_HEIGHT_RATIO))
+            user_ratio = float(ctx.get("signature_width_ratio", self.DEFAULT_WIDTH_RATIO))
         except (TypeError, ValueError):
-            height_ratio = self.DEFAULT_HEIGHT_RATIO
-        height_ratio = max(self.MIN_HEIGHT_RATIO, min(self.MAX_HEIGHT_RATIO, height_ratio))
+            user_ratio = self.DEFAULT_WIDTH_RATIO
+        user_ratio = max(self.MIN_WIDTH_RATIO, min(self.MAX_WIDTH_RATIO, user_ratio))
 
-        # Phase 20：用户自定义的等比缩放倍数（在 height_ratio 之上再乘）
-        try:
-            user_scale = float(ctx.get("signature_scale", self.DEFAULT_SCALE))
-        except (TypeError, ValueError):
-            user_scale = self.DEFAULT_SCALE
-        user_scale = max(self.MIN_SCALE, min(self.MAX_SCALE, user_scale))
-
-        target_h = max(1, int(area_h * height_ratio * user_scale))
-        if sig_img.height > 0:
-            ratio = target_h / sig_img.height
-            target_w = max(1, round(sig_img.width * ratio))
+        target_w = max(1, int(area_w * user_ratio))
+        # 按 PNG 原始宽高比等比推算高度（防御 sig_img.width=0）
+        if sig_img.width > 0:
+            target_h = max(1, int(target_w * sig_img.height / sig_img.width))
         else:
-            target_w = target_h
-        # 防止单边超出区域：若 target_w > area_w，按 area_w 等比缩
-        if target_w > area_w:
-            ratio = area_w / target_w
-            target_w = max(1, area_w)
-            target_h = max(1, int(target_h * ratio))
-        # 防止超出区域高度：若 target_h > area_h（缩放过大时），按 area_h 等比缩
+            target_h = max(1, sig_img.height)
+        # 防止高度超出区域：若 target_h > area_h，按 area_h 等比 fit
         if target_h > area_h:
-            ratio = area_h / target_h
+            fit_ratio = area_h / target_h
             target_h = max(1, area_h)
-            target_w = max(1, int(target_w * ratio))
+            target_w = max(1, int(target_w * fit_ratio))
         sig_resized = sig_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
 
-        # 着色：以 alpha 蒙版替换为指定颜色
-        sig_color_raw = ctx.get("signature_color", "#000000")
-        try:
-            tint_rgba = _parse_color_safe(sig_color_raw)
-        except ValueError:
-            logger.warning(f"[SignatureFilter] 无法解析颜色 {sig_color_raw!r}，回退黑色。")
-            tint_rgba = (0, 0, 0, 255)
-        tinted = self._apply_alpha_tint(sig_resized, tint_rgba)
+        # Phase 26：白→透明 / 黑↔白二值切换 / 彩色像素保留原色
+        invert_mono = bool(ctx.get("signature_invert_mono", False))
+        tinted = self._apply_color_swap(sig_resized, invert_mono=invert_mono)
 
-        # 9 宫格位置 + 四向偏移
-        position = str(ctx.get("signature_position", "bottom_right")).lower()
+        # Phase 23：默认 middle_center — 放大锚点 = 图像中心
+        position = str(ctx.get("signature_position", "middle_center")).lower()
         if position not in self._VALID_POSITIONS:
-            logger.warning(f"[SignatureFilter] 未知位置 {position!r}，回退 bottom_right。")
-            position = "bottom_right"
+            logger.warning(f"[SignatureFilter] 未知位置 {position!r}，回退 middle_center。")
+            position = "middle_center"
 
-        offset_top = max(0, ctx.getint("signature_offset_top", 0))
-        offset_bottom = max(0, ctx.getint("signature_offset_bottom", 0))
-        offset_left = max(0, ctx.getint("signature_offset_left", 0))
-        offset_right = max(0, ctx.getint("signature_offset_right", 0))
+        # Phase 24：offset_x/y 带正负号，任意 position 下都生效（统一为全局位移向量）
+        offset_x = ctx.getint("signature_offset_x", 0)
+        offset_y = ctx.getint("signature_offset_y", 0)
 
         paste_x, paste_y = self._compute_paste_xy(
             position=position,
             area_left=area_left, area_top=area_top,
             area_right=area_right, area_bottom=area_bottom,
             target_w=target_w, target_h=target_h,
-            offset_top=offset_top, offset_bottom=offset_bottom,
-            offset_left=offset_left, offset_right=offset_right,
+            offset_x=offset_x, offset_y=offset_y,
         )
 
         # 边界保护：把 paste 框 clamp 进区域
@@ -898,61 +884,104 @@ class SignatureFilter(FilterProcessor):
         area_left: int, area_top: int,
         area_right: int, area_bottom: int,
         target_w: int, target_h: int,
-        offset_top: int, offset_bottom: int,
-        offset_left: int, offset_right: int,
+        offset_x: int, offset_y: int,
     ) -> tuple[int, int]:
-        """根据 9 宫格位置 + 四向 offset 计算签名左上角粘贴坐标（绝对画布坐标）。
+        """根据 9 宫格位置 + (offset_x, offset_y) 计算签名左上角粘贴坐标（绝对画布坐标）。
 
-        offset 语义：正向"内推"。例如 ``bottom_right`` 锚点下，
-        ``offset_bottom=10`` 表示离区域底边内推 10px；``offset_right=10`` 同理。
+        Phase 24：先按 position 算 base 坐标，再加全局位移向量 (offset_x, offset_y)。
+            offset_x：正向 → 向右；负向 → 向左
+            offset_y：正向 → 向下；负向 → 向上
+        所有 9 个 position 锚点下，offset_x/y 都生效（语义统一）。
         """
-        # 垂直
+        # 垂直 base
         v, _, h = position.partition("_")
         if v == "top":
-            paste_y = area_top + offset_top
+            base_y = area_top
         elif v == "bottom":
-            paste_y = area_bottom - target_h - offset_bottom
+            base_y = area_bottom - target_h
         else:  # middle
-            paste_y = area_top + (area_bottom - area_top - target_h) // 2
+            base_y = area_top + (area_bottom - area_top - target_h) // 2
 
-        # 水平
+        # 水平 base
         if h == "left":
-            paste_x = area_left + offset_left
+            base_x = area_left
         elif h == "right":
-            paste_x = area_right - target_w - offset_right
+            base_x = area_right - target_w
         else:  # center
-            paste_x = area_left + (area_right - area_left - target_w) // 2
+            base_x = area_left + (area_right - area_left - target_w) // 2
 
-        return paste_x, paste_y
+        return base_x + offset_x, base_y + offset_y
+
+    # ── Phase 26：颜色处理阈值 ──
+    # 近白判定：R/G/B 均 ≥ WHITE_THRESHOLD 且 |max-min| ≤ CHROMA_TOL → 视为纸张
+    WHITE_THRESHOLD = 240
+    # 近黑判定：R/G/B 均 ≤ BLACK_THRESHOLD 且 |max-min| ≤ CHROMA_TOL → 视为笔画
+    BLACK_THRESHOLD = 20
+    # 色度容差：max(R,G,B) - min(R,G,B) ≤ CHROMA_TOL → "无色"（灰阶）
+    CHROMA_TOL = 15
 
     @staticmethod
-    def _apply_alpha_tint(img: Image.Image, rgba: tuple[int, int, int, int]) -> Image.Image:
-        """Phase 19：以 RGB 灰度反转作蒙版（白底→透明，黑色笔画→不透明）。
+    def _apply_color_swap(img: Image.Image, *, invert_mono: bool) -> Image.Image:
+        """Phase 26：按像素三分类处理签名图 — 白底→透明、黑↔白可切换、彩色保留。
 
-        永远忽略源图的 alpha 通道 — 统一处理 JPG / RGB / RGBA 三类素材。
-        典型用例：用户上传白底黑字签名扫描件，只有笔画部分会被着色显形。
+        像素分类（基于源图 RGB，忽略源图 alpha）：
 
-        - ``rgba[0:3]`` 决定笔画颜色。
-        - ``rgba[3] < 255`` 时整体蒙版按比例缩放，允许半透明签名。
+        1. **近白**（R/G/B 均 ≥ ``WHITE_THRESHOLD`` 且 |max-min| ≤ ``CHROMA_TOL``）
+           → ``alpha=0``（视为纸张/白底）。
+        2. **近黑**（R/G/B 均 ≤ ``BLACK_THRESHOLD`` 且 |max-min| ≤ ``CHROMA_TOL``）
+           → 笔画：``invert_mono=False`` → 输出黑色 (0,0,0,255)；
+                  ``invert_mono=True`` → 输出白色 (255,255,255,255)。
+        3. **彩色**（任何带色相像素，如签名上的红点）
+           → RGB 原样保留；alpha 由 RGB 亮度推导（亮度越低 → alpha 越高），
+              保证抗锯齿边缘平滑融合。
+
+        中间灰度（既非近白也非近黑的"无色"像素，例如黑笔画的抗锯齿边缘）
+        被作为笔画延伸处理：RGB 跟随 ``invert_mono`` 切换，alpha 由亮度推导。
         """
-        # 强制丢弃任何 alpha 通道，统一从 RGB 推导蒙版
-        rgb = img.convert("RGB")
-        gray = rgb.convert("L")
-        mask = Image.eval(gray, lambda v: 255 - v)  # 深色 → 高不透明，白色 → 透明
+        # 强制丢弃源图 alpha，统一从 RGB 三通道推导
+        rgb = np.asarray(img.convert("RGB"), dtype=np.uint8)  # (H, W, 3)
+        r = rgb[..., 0].astype(np.int16)
+        g = rgb[..., 1].astype(np.int16)
+        b = rgb[..., 2].astype(np.int16)
 
-        # 全局 alpha 缩放
-        if rgba[3] < 255:
-            scale = rgba[3] / 255.0
-            mask_arr = np.asarray(mask, dtype=np.float32) * scale
-            mask = Image.fromarray(mask_arr.astype(np.uint8), mode="L")
+        max_c = np.maximum(np.maximum(r, g), b)
+        min_c = np.minimum(np.minimum(r, g), b)
+        chroma = max_c - min_c  # 色度差；越小越接近灰阶
 
-        # 纯色填充层 + 蒙版 = tinted 图
-        solid = Image.new("RGBA", img.size, (rgba[0], rgba[1], rgba[2], 255))
-        solid.putalpha(mask)
-        return solid
+        is_achromatic = chroma <= SignatureFilter.CHROMA_TOL
+        is_near_white = is_achromatic & (min_c >= SignatureFilter.WHITE_THRESHOLD)
+        is_near_black = is_achromatic & (max_c <= SignatureFilter.BLACK_THRESHOLD)
+        is_chromatic = ~is_achromatic  # 真彩色像素
+        is_mid_gray = is_achromatic & ~is_near_white & ~is_near_black
 
+        h, w = rgb.shape[:2]
+        out = np.zeros((h, w, 4), dtype=np.uint8)
 
-def _parse_color_safe(color):
-    """局部 helper：复用 :func:`processor.core._parse_color` 但 import 局部化。"""
-    from processor.core import _parse_color
-    return _parse_color(color)
+        # 笔画颜色（黑或白）— 由 invert_mono 控制
+        stroke_rgb = (255, 255, 255) if invert_mono else (0, 0, 0)
+
+        # ── 类 1：近白 → 全透明（out 已初始化为 0） ──
+
+        # ── 类 2：近黑 → 笔画完全不透明 ──
+        out[is_near_black, 0] = stroke_rgb[0]
+        out[is_near_black, 1] = stroke_rgb[1]
+        out[is_near_black, 2] = stroke_rgb[2]
+        out[is_near_black, 3] = 255
+
+        # 亮度（标准 luminance 近似）：0.299R + 0.587G + 0.114B；用于推导 alpha
+        luminance = (0.299 * r + 0.587 * g + 0.114 * b).astype(np.float32)
+        alpha_from_luminance = np.clip(255.0 - luminance, 0, 255).astype(np.uint8)
+
+        # ── 类 3：彩色像素 → 保留原 RGB；alpha 由亮度推导 ──
+        out[is_chromatic, 0] = rgb[is_chromatic, 0]
+        out[is_chromatic, 1] = rgb[is_chromatic, 1]
+        out[is_chromatic, 2] = rgb[is_chromatic, 2]
+        out[is_chromatic, 3] = alpha_from_luminance[is_chromatic]
+
+        # ── 中间灰度（笔画抗锯齿边缘）→ 跟随 stroke 颜色，alpha 由亮度推导 ──
+        out[is_mid_gray, 0] = stroke_rgb[0]
+        out[is_mid_gray, 1] = stroke_rgb[1]
+        out[is_mid_gray, 2] = stroke_rgb[2]
+        out[is_mid_gray, 3] = alpha_from_luminance[is_mid_gray]
+
+        return Image.fromarray(out, mode="RGBA")

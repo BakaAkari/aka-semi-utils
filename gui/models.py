@@ -122,21 +122,25 @@ class AdvancedConfig:
     concat_direction: str = "vertical"  # horizontal / vertical
     alignment_mode: str = "center"      # top / center / bottom
 
-    # 签名（Phase 18：定位到图像区域内 + 9 宫格 + 四向偏移）
+    # 签名（Phase 26：白底→透明、黑白二值切换、彩色像素保留原色）
     signature_enabled: bool = False
     signature_path: str = ""
-    signature_color: str = "#000000"               # 任意 hex / 颜色名；运行时按 alpha 蒙版 tint
+    # Phase 26：是否反相黑白笔画（False=黑色文字，True=白色文字）；
+    # 仅作用于近黑/近白的"无色"像素，彩色像素（如签名上的红点）始终原样保留。
+    signature_invert_mono: bool = False
     # 9 宫格之一：top_left/top_center/top_right/middle_left/middle_center/middle_right
     #            /bottom_left/bottom_center/bottom_right
-    signature_position: str = "bottom_right"
-    signature_height_ratio: float = 0.05           # 相对【原图区域】高度的占比（0~1），默认 5%
-    # Phase 20：在 height_ratio 计算出的尺寸基础上再整体等比缩放（保持宽高比）
-    signature_scale: float = 1.0                   # 0.1~5.0
-    # 四向偏移（像素，正向"内推" — 由 position 锚点决定哪两个生效）
-    signature_offset_top: int = 0                  # top_* 锚点：从图像区域顶部内推
-    signature_offset_bottom: int = 0               # bottom_* 锚点：从图像区域底部内推
-    signature_offset_left: int = 0                 # *_left 锚点：从图像区域左边内推
-    signature_offset_right: int = 0                # *_right 锚点：从图像区域右边内推
+    # Phase 23：默认 middle_center — 放大行为符合"以图像中心为锚"的视觉直觉
+    signature_position: str = "middle_center"
+    # Phase 22：尺寸 = 签名宽度占【原图区域宽度】的比例（0.01~1.0），分辨率无关；
+    # 高度按签名 PNG 原始宽高比等比；超出区域时由 filter 自动 fit。
+    signature_width_ratio: float = 0.15
+    # Phase 24：偏移（像素，带正负号；任意 position 下都生效）
+    #   offset_x: 正向 → 向右；负向 → 向左
+    #   offset_y: 正向 → 向下；负向 → 向上
+    # 计算顺序：① position 决定 base 坐标 → ② 加 (offset_x, offset_y)
+    signature_offset_x: int = 0
+    signature_offset_y: int = 0
 
 
 @dataclass

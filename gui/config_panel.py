@@ -25,16 +25,19 @@
 - :class:`ChipRowWidget`       —— 单行：``[字段▼] [⚙] [◀] [▶] [×]``
 - :class:`CornerSection`       —— 单角 Accordion：标题行 + chip 列表 + 控制行
 - :class:`LogoTab`             —— Logo + 全局自定义文本
-- :class:`ConfigPanel`         —— 顶层 Tab：水印 / Logo
+- :class:`SignatureTab`        —— Phase 25：签名（位置/缩放/偏移）独立子 Tab
+- :class:`ConfigPanel`         —— 顶层 Tab：水印 / Logo / 签名
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import ClassVar
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QColorDialog,
     QComboBox,
     QDialog,
@@ -48,6 +51,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QTabWidget,
     QToolButton,
     QVBoxLayout,
@@ -766,6 +770,188 @@ class LogoTab(QWidget):
 
 
 # =============================================================================
+# SignatureTab — Phase 25：签名（位置 / 缩放 / 偏移）独立子 Tab
+# =============================================================================
+
+
+class SignatureTab(QWidget):
+    """签名子 Tab — Phase 25 从 AdvancedPanel 拆出，与水印/Logo 平级。
+
+    设计要点
+    --------
+    - **写回策略**：用 :func:`dataclasses.replace` 局部更新 ``state.advanced`` 中的
+      签名 7 个字段（``signature_*``），不覆盖 :class:`AdvancedPanel` 持有的非签名
+      字段。``set_advanced_config`` 触发 ``advanced_changed`` 信号后，AdvancedPanel
+      的 ``_load_state`` 会把所有非签名字段刷一遍——但因 ``_loading`` 守卫不会再回写。
+    - **加载守卫**：与 LogoTab 一致的 ``self._loading`` 模式，避免 ``setValue`` /
+      ``setText`` 触发的 ``*_changed`` 信号导致循环。
+    - **订阅**：自订阅 ``advanced_changed``，模板加载 / reset 后整个 Tab 重新刷值。
+    """
+
+    # 9 宫格 position 内部 value（与 AdvancedPanel 旧实现保持一致）
+    _POSITION_VALUES: ClassVar[list[str]] = [
+        "top_left", "top_center", "top_right",
+        "middle_left", "middle_center", "middle_right",
+        "bottom_left", "bottom_center", "bottom_right",
+    ]
+    _POSITION_LABELS: ClassVar[list[str]] = [
+        "左上", "上方居中", "右上",
+        "左侧居中", "正中心", "右侧居中",
+        "左下", "下方居中", "右下",
+    ]
+
+    def __init__(self, state: AppState, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.state = state
+        self._loading = False
+        self._setup_ui()
+        self._load_state()
+        # Phase 25：自订阅 advanced_changed —— 模板加载 / reset 等外部全量替换由
+        # AppState 主动通知；本 Tab 不需要主窗口手工同步。
+        self.state.advanced_changed.connect(self._load_state)
+
+    # ---- UI ----
+
+    def _setup_ui(self) -> None:
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setSpacing(8)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        form.setHorizontalSpacing(8)
+        form.setVerticalSpacing(8)
+
+        # 启用开关
+        self.enabled_check = QCheckBox("启用签名")
+        self.enabled_check.stateChanged.connect(self._on_changed)
+        form.addRow("", self.enabled_check)
+
+        # 签名图片路径
+        path_row = QHBoxLayout()
+        self.path_input = QLineEdit()
+        self.path_input.setPlaceholderText("选择签名图片(PNG / JPG)...")
+        self.path_input.textChanged.connect(self._on_changed)
+        browse_btn = QPushButton("浏览...")
+        browse_btn.clicked.connect(self._browse_signature)
+        path_row.addWidget(self.path_input, 1)
+        path_row.addWidget(browse_btn)
+        form.addRow("签名图片：", path_row)
+
+        # Phase 26：反向签名色（黑↔白二值切换；彩色像素始终保留原色）
+        self.invert_mono_combo = QComboBox()
+        self.invert_mono_combo.addItem("黑色文字（保留彩色像素）", False)
+        self.invert_mono_combo.addItem("白色文字（保留彩色像素）", True)
+        self.invert_mono_combo.setToolTip(
+            "切换签名笔画的黑白色：仅作用于近黑/近白的无色像素，"
+            "签名上的彩色装饰（如红点、印章）始终保留原色不被修改。"
+        )
+        self.invert_mono_combo.currentIndexChanged.connect(self._on_changed)
+        form.addRow("反向签名色：", self.invert_mono_combo)
+
+        # 位置（9 宫格 ComboBox）
+        self.position_combo = QComboBox()
+        for value, label in zip(
+            self._POSITION_VALUES, self._POSITION_LABELS, strict=True
+        ):
+            self.position_combo.addItem(label, value)
+        self.position_combo.currentIndexChanged.connect(self._on_changed)
+        form.addRow("位置：", self.position_combo)
+
+        # 宽度占比（1%~100%，默认 15%）
+        self.width_ratio_spin = QSpinBox()
+        self.width_ratio_spin.setRange(1, 100)
+        self.width_ratio_spin.setSingleStep(1)
+        self.width_ratio_spin.setValue(15)
+        self.width_ratio_spin.setSuffix(" %")
+        self.width_ratio_spin.setToolTip(
+            "签名宽度占【原图区域宽度】的百分比（与图像分辨率无关，默认 15%）；"
+            "高度按签名 PNG 原始宽高比等比；超出图像区域时自动 fit。"
+        )
+        self.width_ratio_spin.valueChanged.connect(self._on_changed)
+        form.addRow("宽度占比：", self.width_ratio_spin)
+
+        # Phase 24：偏移（X/Y 像素，带正负号；任意 position 下都生效）
+        offset_row = QHBoxLayout()
+        offset_row.addWidget(QLabel("X："))
+        self.offset_x_spin = QSpinBox()
+        self.offset_x_spin.setRange(-9999, 9999)
+        self.offset_x_spin.setSuffix(" px")
+        self.offset_x_spin.setToolTip("水平偏移（正向 → 向右；负向 → 向左）。")
+        self.offset_x_spin.valueChanged.connect(self._on_changed)
+        offset_row.addWidget(self.offset_x_spin)
+        offset_row.addSpacing(16)
+        offset_row.addWidget(QLabel("Y："))
+        self.offset_y_spin = QSpinBox()
+        self.offset_y_spin.setRange(-9999, 9999)
+        self.offset_y_spin.setSuffix(" px")
+        self.offset_y_spin.setToolTip("垂直偏移（正向 → 向下；负向 → 向上）。")
+        self.offset_y_spin.valueChanged.connect(self._on_changed)
+        offset_row.addWidget(self.offset_y_spin)
+        offset_row.addStretch(1)
+        form.addRow("偏移：", offset_row)
+
+        outer.addLayout(form)
+        outer.addStretch(1)
+
+    # ---- 加载 / 提交 ----
+
+    def _load_state(self, *_args) -> None:
+        """从 AppState 加载签名相关 7 个字段（带 ``_loading`` 守卫）。"""
+        self._loading = True
+        try:
+            cfg = self.state.advanced
+            self.enabled_check.setChecked(cfg.signature_enabled)
+            self.path_input.setText(cfg.signature_path)
+            # Phase 26：bool → ComboBox index（False=0=黑色，True=1=白色）
+            self.invert_mono_combo.setCurrentIndex(1 if cfg.signature_invert_mono else 0)
+            try:
+                idx = self._POSITION_VALUES.index(cfg.signature_position)
+            except ValueError:
+                # 兜底：未知 position → 回到默认 middle_center（与 dataclass 一致）
+                idx = self._POSITION_VALUES.index("middle_center")
+            self.position_combo.setCurrentIndex(idx)
+            # 内部 0.01~1.0 → UI 1~100 整数百分比
+            self.width_ratio_spin.setValue(
+                max(1, min(100, round(cfg.signature_width_ratio * 100)))
+            )
+            self.offset_x_spin.setValue(cfg.signature_offset_x)
+            self.offset_y_spin.setValue(cfg.signature_offset_y)
+        finally:
+            self._loading = False
+
+    def _on_changed(self, *_args) -> None:
+        """签名字段任意变更 → 局部 replace 写回 state.advanced。"""
+        if self._loading:
+            return
+        new_cfg = replace(
+            self.state.advanced,
+            signature_enabled=self.enabled_check.isChecked(),
+            signature_path=self.path_input.text(),
+            signature_invert_mono=bool(self.invert_mono_combo.currentData()),
+            signature_position=(
+                self.position_combo.currentData() or "middle_center"
+            ),
+            signature_width_ratio=self.width_ratio_spin.value() / 100.0,
+            signature_offset_x=self.offset_x_spin.value(),
+            signature_offset_y=self.offset_y_spin.value(),
+        )
+        self.state.set_advanced_config(new_cfg)
+
+    # ---- 辅助 ----
+
+    def _browse_signature(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择签名图片", "", "图片 (*.png *.jpg *.jpeg)"
+        )
+        if path:
+            self.path_input.setText(path)
+            # textChanged 信号已自动触发 _on_changed
+
+
+# =============================================================================
 # ConfigPanel — 顶层 Tab 容器
 # =============================================================================
 
@@ -773,9 +959,10 @@ class LogoTab(QWidget):
 class ConfigPanel(QWidget):
     """水印配置主面板（单视图 Accordion）。
 
-    架构：
+    架构（Phase 25：3 个子 Tab）：
     - Tab "水印"：4 个 :class:`CornerSection` 垂直堆叠 + 滚动条
     - Tab "Logo"：:class:`LogoTab`
+    - Tab "签名"：:class:`SignatureTab`
 
     本面板**不订阅** ``state.watermark_changed``，因此用户编辑不会触发重入式重建。
     仅订阅 ``state.state_reloaded``（外部全量替换：load/reset）做整树重建。
@@ -831,10 +1018,18 @@ class ConfigPanel(QWidget):
         self.logo_tab = LogoTab(self.state)
         self.tabs.addTab(self.logo_tab, "Logo")
 
+        # Tab 3：签名（Phase 25：从 AdvancedPanel 拆出独立成 Tab）
+        self.signature_tab = SignatureTab(self.state)
+        self.tabs.addTab(self.signature_tab, "签名")
+
     # ---- 外部触发的整树重建 ----
 
     def _reload_all_from_state(self, *_args) -> None:
         """``load_from_disk`` / ``reset_to_defaults`` 等外部全量替换后整体重建 UI。"""
         for section in self._sections.values():
             section._rebuild_from_state()
+        # LogoTab 自订阅了 state_reloaded？没有 —— 显式刷一遍以保证一致。
+        # SignatureTab 自订阅了 advanced_changed —— state_reloaded 后 AppState
+        # 会再发 advanced_changed，故无需显式调用；为保险显式刷一次更稳妥。
+        self.signature_tab._load_state()
         self.logo_tab._load_state()

@@ -1,4 +1,11 @@
-"""高级设置面板 - 所有分组默认折叠。"""
+"""高级设置面板 - 所有分组默认折叠。
+
+Phase 25：签名相关 UI 已迁移至 :class:`gui.config_panel.SignatureTab`；本面板
+不再持有 ``signature_*`` 控件，但仍尊重并保留 :class:`AdvancedConfig` 中的签名
+字段（在 :meth:`AdvancedPanel._on_changed` 写回时用 ``replace`` 透传）。
+"""
+
+from dataclasses import replace
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
@@ -155,11 +162,6 @@ class AdvancedPanel(QWidget):
         resize_group = CollapsibleGroup("图像调整")
         self._setup_resize_group(resize_group)
         content_layout.addWidget(resize_group)
-
-        # 分组 7: 签名（Phase 17：完整接入渲染管线）
-        sig_group = CollapsibleGroup("签名")
-        self._setup_signature_group(sig_group)
-        content_layout.addWidget(sig_group)
 
         content_layout.addStretch()
         
@@ -402,120 +404,6 @@ class AdvancedPanel(QWidget):
         align_row.addStretch()
         group.add_layout(align_row)
 
-    def _setup_signature_group(self, group: CollapsibleGroup):
-        """签名设置（Phase 18：图像内 9 宫格定位 + 四向偏移）。"""
-        enable_row = QHBoxLayout()
-        self.sig_enabled = QCheckBox("启用签名")
-        self.sig_enabled.stateChanged.connect(self._on_changed)
-        enable_row.addWidget(self.sig_enabled)
-        enable_row.addStretch()
-        group.add_layout(enable_row)
-
-        path_row = QHBoxLayout()
-        path_row.addWidget(QLabel("签名图片:"))
-        self.sig_path = QLineEdit()
-        self.sig_path.setPlaceholderText("选择签名图片(PNG / JPG)...")
-        self.sig_path.textChanged.connect(self._on_changed)
-        path_row.addWidget(self.sig_path)
-        browse_btn = QPushButton("浏览...")
-        browse_btn.clicked.connect(self._browse_signature)
-        path_row.addWidget(browse_btn)
-        group.add_layout(path_row)
-
-        # 颜色：色板按钮（与全局颜色 / 边距颜色一致的交互）
-        color_row = QHBoxLayout()
-        color_row.addWidget(QLabel("颜色:"))
-        self.sig_color = QLineEdit("#000000")
-        self.sig_color.setFixedWidth(80)
-        self.sig_color.textChanged.connect(self._on_changed)
-        color_row.addWidget(self.sig_color)
-        self.sig_color_btn = QPushButton()
-        self.sig_color_btn.setFixedSize(24, 24)
-        self.sig_color_btn.clicked.connect(lambda: self._pick_color(self.sig_color, self.sig_color_btn))
-        color_row.addWidget(self.sig_color_btn)
-        color_row.addStretch()
-        group.add_layout(color_row)
-
-        # 位置（9 宫格）
-        pos_row = QHBoxLayout()
-        pos_row.addWidget(QLabel("位置:"))
-        self.sig_position = QComboBox()
-        # 内部 value 与中文标签按相同顺序排列；行优先（左上→中中→右下）
-        self._sig_position_values = [
-            "top_left", "top_center", "top_right",
-            "middle_left", "middle_center", "middle_right",
-            "bottom_left", "bottom_center", "bottom_right",
-        ]
-        self.sig_position.addItems([
-            "左上", "上方居中", "右上",
-            "左侧居中", "正中心", "右侧居中",
-            "左下", "下方居中", "右下",
-        ])
-        self.sig_position.currentIndexChanged.connect(self._on_changed)
-        pos_row.addWidget(self.sig_position)
-        pos_row.addStretch()
-        group.add_layout(pos_row)
-
-        # 高度占比（相对原图区域高度，0.5%~100%） + 缩放倍数（Phase 20）
-        height_row = QHBoxLayout()
-        height_row.addWidget(QLabel("高度占比:"))
-        self.sig_height_ratio = QDoubleSpinBox()
-        self.sig_height_ratio.setRange(0.005, 1.0)
-        self.sig_height_ratio.setSingleStep(0.01)
-        self.sig_height_ratio.setDecimals(3)
-        self.sig_height_ratio.setValue(0.05)
-        self.sig_height_ratio.setSuffix(" × 原图高度")
-        self.sig_height_ratio.valueChanged.connect(self._on_changed)
-        height_row.addWidget(self.sig_height_ratio)
-        height_row.addSpacing(16)
-        height_row.addWidget(QLabel("缩放倍数:"))
-        self.sig_scale = QDoubleSpinBox()
-        self.sig_scale.setRange(0.1, 5.0)
-        self.sig_scale.setSingleStep(0.1)
-        self.sig_scale.setDecimals(2)
-        self.sig_scale.setValue(1.0)
-        self.sig_scale.setSuffix(" ×")
-        self.sig_scale.setToolTip("在高度占比的基础上再整体等比缩放（保持宽高比）")
-        self.sig_scale.valueChanged.connect(self._on_changed)
-        height_row.addWidget(self.sig_scale)
-        height_row.addStretch()
-        group.add_layout(height_row)
-
-        # 四向偏移（像素，正向"内推" — 由 position 锚点决定哪两个生效）
-        offset_row1 = QHBoxLayout()
-        offset_row1.addWidget(QLabel("上偏移:"))
-        self.sig_offset_top = QSpinBox()
-        self.sig_offset_top.setRange(0, 9999)
-        self.sig_offset_top.setSuffix(" px")
-        self.sig_offset_top.valueChanged.connect(self._on_changed)
-        offset_row1.addWidget(self.sig_offset_top)
-        offset_row1.addSpacing(16)
-        offset_row1.addWidget(QLabel("下偏移:"))
-        self.sig_offset_bottom = QSpinBox()
-        self.sig_offset_bottom.setRange(0, 9999)
-        self.sig_offset_bottom.setSuffix(" px")
-        self.sig_offset_bottom.valueChanged.connect(self._on_changed)
-        offset_row1.addWidget(self.sig_offset_bottom)
-        offset_row1.addStretch()
-        group.add_layout(offset_row1)
-
-        offset_row2 = QHBoxLayout()
-        offset_row2.addWidget(QLabel("左偏移:"))
-        self.sig_offset_left = QSpinBox()
-        self.sig_offset_left.setRange(0, 9999)
-        self.sig_offset_left.setSuffix(" px")
-        self.sig_offset_left.valueChanged.connect(self._on_changed)
-        offset_row2.addWidget(self.sig_offset_left)
-        offset_row2.addSpacing(16)
-        offset_row2.addWidget(QLabel("右偏移:"))
-        self.sig_offset_right = QSpinBox()
-        self.sig_offset_right.setRange(0, 9999)
-        self.sig_offset_right.setSuffix(" px")
-        self.sig_offset_right.valueChanged.connect(self._on_changed)
-        offset_row2.addWidget(self.sig_offset_right)
-        offset_row2.addStretch()
-        group.add_layout(offset_row2)
-
     def _pick_color(self, input_field, btn):
         """通用颜色选择。"""
         color = QColorDialog.getColor(QColor(input_field.text()), self)
@@ -524,13 +412,6 @@ class AdvancedPanel(QWidget):
             input_field.setText(hex_color)
             btn.setStyleSheet(f"background-color: {hex_color}; border-radius: 4px; border: 1px solid #666666;")
             self._on_changed()
-
-    def _browse_signature(self):
-        from PyQt6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getOpenFileName(self, "选择签名图片", "", "图片 (*.png *.jpg *.jpeg)")
-        if path:
-            self.sig_path.setText(path)
-            # textChanged 信号已自动触发 _on_changed，无需显式调用
 
     def _on_changed(self):
         """配置变更时保存到 AppState（Phase 9：写回循环守卫）。"""
@@ -560,19 +441,22 @@ class AdvancedPanel(QWidget):
             trim_threshold=self.trim_threshold.value(),
             concat_direction=self.concat_direction.currentText(),
             alignment_mode=self.alignment_mode.currentText(),
-            signature_enabled=self.sig_enabled.isChecked(),
-            signature_path=self.sig_path.text(),
-            signature_color=self.sig_color.text(),
-            signature_position=self._sig_position_values[self.sig_position.currentIndex()],
-            signature_height_ratio=self.sig_height_ratio.value(),
-            signature_scale=self.sig_scale.value(),
-            signature_offset_top=self.sig_offset_top.value(),
-            signature_offset_bottom=self.sig_offset_bottom.value(),
-            signature_offset_left=self.sig_offset_left.value(),
-            signature_offset_right=self.sig_offset_right.value(),
             corner_text_height_px=self.corner_text_height_px.value(),
             footer_height_px=self.footer_height_px.value(),
             logo_height_px=self.logo_height_px.value(),
+        )
+        # Phase 25：签名 7 字段已迁移至 SignatureTab，本面板不再持有；
+        # 写回时用 replace 透传当前 state 中的签名字段，避免被 dataclass 默认值覆盖。
+        prev = self.state.advanced
+        config = replace(
+            config,
+            signature_enabled=prev.signature_enabled,
+            signature_path=prev.signature_path,
+            signature_color=prev.signature_color,
+            signature_position=prev.signature_position,
+            signature_width_ratio=prev.signature_width_ratio,
+            signature_offset_x=prev.signature_offset_x,
+            signature_offset_y=prev.signature_offset_y,
         )
         self.state.set_advanced_config(config)
 
@@ -631,23 +515,6 @@ class AdvancedPanel(QWidget):
             if idx >= 0:
                 self.alignment_mode.setCurrentIndex(idx)
 
-            self.sig_enabled.setChecked(cfg.signature_enabled)
-            self.sig_path.setText(cfg.signature_path)
-            self.sig_color.setText(cfg.signature_color)
-            self.sig_color_btn.setStyleSheet(
-                f"background-color: {cfg.signature_color}; border-radius: 4px; border: 1px solid #666666;"
-            )
-            try:
-                pos_idx = self._sig_position_values.index(cfg.signature_position)
-            except ValueError:
-                # 兜底回到 bottom_right
-                pos_idx = self._sig_position_values.index("bottom_right")
-            self.sig_position.setCurrentIndex(pos_idx)
-            self.sig_height_ratio.setValue(cfg.signature_height_ratio)
-            self.sig_scale.setValue(cfg.signature_scale)
-            self.sig_offset_top.setValue(cfg.signature_offset_top)
-            self.sig_offset_bottom.setValue(cfg.signature_offset_bottom)
-            self.sig_offset_left.setValue(cfg.signature_offset_left)
-            self.sig_offset_right.setValue(cfg.signature_offset_right)
+            # Phase 25：签名相关字段不再加载到本面板（已迁至 SignatureTab）。
         finally:
             self._loading = False

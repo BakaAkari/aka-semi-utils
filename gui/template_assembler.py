@@ -310,12 +310,12 @@ def _build_signature_config(state: AppState) -> dict[str, Any]:
     return {
         "signature_enabled": True,
         "signature_path": cfg.signature_path,
-        "signature_color": cfg.signature_color,
+        # Phase 26：黑↔白笔画切换；彩色像素永远保留原色（详见 SignatureFilter）
+        "signature_invert_mono": cfg.signature_invert_mono,
         "signature_position": cfg.signature_position,
-        "signature_height_ratio": cfg.signature_height_ratio,
-        "signature_scale": cfg.signature_scale,
-        "signature_offset_top": cfg.signature_offset_top,
-        "signature_offset_bottom": cfg.signature_offset_bottom,
-        "signature_offset_left": cfg.signature_offset_left,
-        "signature_offset_right": cfg.signature_offset_right,
+        # Phase 22：尺寸 = 签名宽度占图宽比例（0.01~1.0），分辨率无关
+        "signature_width_ratio": cfg.signature_width_ratio,
+        # Phase 24：偏移（带正负号；任意 position 下都生效）
+        "signature_offset_x": cfg.signature_offset_x,
+        "signature_offset_y": cfg.signature_offset_y,
     }
