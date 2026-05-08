@@ -14,12 +14,11 @@ from __future__ import annotations
 import json
 import logging
 import shutil  # noqa: F401  保留以兼容外部 import
+import tomllib
 from configparser import ConfigParser
 from configparser import Error as ConfigParserError
 from pathlib import Path
 from typing import Any
-
-import tomli
 
 logger = logging.getLogger(__name__)
 
@@ -247,4 +246,4 @@ def load_config() -> ConfigParser:
 def load_project_info() -> dict[str, Any]:
     """读取 ``pyproject.toml`` 项目元信息。"""
     with open(PROJECT_INFO_PATH, "rb") as f:
-        return tomli.load(f)
+        return tomllib.load(f)
