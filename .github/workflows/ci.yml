@@ -50,9 +50,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install exiftool (Linux)
+      - name: Install system deps (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libimage-exiftool-perl libegl1-mesa
 
       - name: Install exiftool (macOS)
         if: matrix.os == 'macos-latest'
