@@ -106,11 +106,11 @@
     "concat_direction": "vertical",
     "alignment_mode": "center",
     "signature_enabled": true,
-    "signature_path": "/Users/baka_akari/Pictures/20260506-182912.png",
+    "signature_path": "/Users/baka_akari/Pictures/Akari.png",
     "signature_invert_mono": true,
     "signature_position": "bottom_center",
     "signature_width_ratio": 0.2,
     "signature_offset_x": 0,
-    "signature_offset_y": -563
+    "signature_offset_y": -565
   }
 }

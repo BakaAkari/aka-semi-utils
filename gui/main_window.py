@@ -1,16 +1,12 @@
 """主窗口 — 整合所有组件，不做 God Object。"""
 
-import contextlib
 import logging
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -111,184 +107,11 @@ class CollapsibleConfigPanel(QFrame):
         # 标题栏保持可点击
 
 
-class CollapsiblePreviewSidebar(QFrame):
-    """Phase 27.6：右侧预览侧栏 — 悬浮药丸把手（Option A，VSCode 风格）。
-
-    设计语言：
-    - 折叠态：右侧只飘一颗 32×96 圆角药丸按钮（垂直居中），单箭头 ``‹``，
-      其余空间透明，让左列内容呼吸；主窗口紧凑。
-    - 展开态：把手并入内容区左边缘（共享圆角语境），内容区有 12px 圆角 +
-      drop shadow 浮起，与左列形成视觉层次；主窗口自动加宽。
-    - 折叠/展开联动 PreviewPanel.set_active() 暂停/恢复渲染，节省 CPU。
-    - 默认折叠，状态**不持久化**（用户决策）。
-
-    Layout 拓扑（QHBoxLayout，左→右）::
-
-        [ stretch ] [ handle (32×96, 垂直居中) ] [ content (360px) ]
-
-    handle 的 sizePolicy 为 Fixed×Fixed，外层用 QVBoxLayout(stretch+handle+stretch)
-    把它顶到垂直中心，而不是占满整列。
-    """
-
-    SIDEBAR_CONTENT_WIDTH = 360  # 展开时内容区宽度（含 padding）
-    HANDLE_WIDTH = 32            # 药丸把手宽度
-    HANDLE_HEIGHT = 96           # 药丸把手高度（垂直居中漂浮）
-
-    # 折叠/展开状态切换时通知主窗口调整窗口尺寸
-    expansion_changed = pyqtSignal(bool)  # True=展开, False=折叠
-
-    # 把手 QSS — 折叠态：左侧 16px 圆角药丸（右侧无圆角，因为右边就是窗口边）
-    _HANDLE_QSS_COLLAPSED = """
-        QPushButton {
-            border: none;
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 rgba(60, 60, 60, 220),
-                stop:1 rgba(45, 45, 45, 220));
-            color: #C8C8C8;
-            font-size: 18px;
-            font-weight: bold;
-            border-top-left-radius: 16px;
-            border-bottom-left-radius: 16px;
-            border-top-right-radius: 0px;
-            border-bottom-right-radius: 0px;
-            padding-bottom: 2px;
-        }
-        QPushButton:hover {
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 rgba(80, 80, 80, 240),
-                stop:1 rgba(60, 60, 60, 240));
-            color: #FFFFFF;
-        }
-        QPushButton:pressed {
-            background: rgba(40, 40, 40, 240);
-        }
-    """
-
-    # 展开态：把手与内容区左边缘融合 — 4 个角全直角，把手成为内容区的一部分
-    _HANDLE_QSS_EXPANDED = """
-        QPushButton {
-            border: none;
-            background-color: #2B2B2B;
-            color: #C8C8C8;
-            font-size: 18px;
-            font-weight: bold;
-            border-top-left-radius: 12px;
-            border-bottom-left-radius: 12px;
-            border-top-right-radius: 0px;
-            border-bottom-right-radius: 0px;
-            padding-bottom: 2px;
-        }
-        QPushButton:hover {
-            background-color: #3A3A3A;
-            color: #FFFFFF;
-        }
-        QPushButton:pressed {
-            background-color: #1F1F1F;
-        }
-    """
-
-    # 内容区 QSS — 右上/右下 12px 圆角；左边缘与 handle 平接（无圆角）
-    _CONTENT_QSS = """
-        QWidget#PreviewSidebarContent {
-            background-color: #2B2B2B;
-            border-top-right-radius: 12px;
-            border-bottom-right-radius: 12px;
-        }
-    """
-
-    def __init__(self, state: AppState, parent=None, expanded: bool = False):
-        super().__init__(parent)
-        self.state = state
-        self._expanded = expanded
-
-        # 让 QFrame 自身完全透明，让药丸真的"漂浮"在左列右侧
-        self.setStyleSheet("CollapsiblePreviewSidebar { background: transparent; border: none; }")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-
-        self._setup_ui()
-        self._apply_expansion(initial=True)
-
-    def _setup_ui(self) -> None:
-        layout = QHBoxLayout(self)
-        # 左侧 8px 透明呼吸空间，让药丸不紧贴左列内容（视觉漂浮感的关键）
-        layout.setContentsMargins(8, 0, 0, 0)
-        layout.setSpacing(0)
-
-        # ---- 1) 把手列：QVBoxLayout(stretch + handle + stretch) → 垂直居中 ----
-        handle_col = QWidget()
-        handle_col.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        handle_col.setFixedWidth(self.HANDLE_WIDTH)
-        handle_col_layout = QVBoxLayout(handle_col)
-        handle_col_layout.setContentsMargins(0, 0, 0, 0)
-        handle_col_layout.setSpacing(0)
-        handle_col_layout.addStretch(1)
-
-        self.handle = QPushButton()
-        self.handle.setFixedSize(self.HANDLE_WIDTH, self.HANDLE_HEIGHT)
-        self.handle.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.handle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.handle.setToolTip("展开预览")
-        self.handle.clicked.connect(self._toggle)
-        handle_col_layout.addWidget(self.handle, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        handle_col_layout.addStretch(1)
-        layout.addWidget(handle_col)
-
-        # ---- 2) 内容区：圆角 + drop shadow（折叠态隐藏） ----
-        self.content = QWidget()
-        self.content.setObjectName("PreviewSidebarContent")
-        self.content.setStyleSheet(self._CONTENT_QSS)
-        self.content.setFixedWidth(self.SIDEBAR_CONTENT_WIDTH)
-        self.content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-
-        content_layout = QVBoxLayout(self.content)
-        content_layout.setContentsMargins(8, 8, 8, 8)
-        content_layout.setSpacing(0)
-
-        self.preview_panel = PreviewPanel(self.state)
-        content_layout.addWidget(self.preview_panel)
-        layout.addWidget(self.content)
-
-        # drop shadow — 让内容区从背景"浮"起来
-        shadow = QGraphicsDropShadowEffect(self.content)
-        shadow.setBlurRadius(24)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QColor(0, 0, 0, 140))
-        self.content.setGraphicsEffect(shadow)
-
-    def _toggle(self) -> None:
-        self._expanded = not self._expanded
-        self._apply_expansion(initial=False)
-
-    def _apply_expansion(self, *, initial: bool) -> None:
-        """同步可见性 + 把手样式/箭头/tooltip + PreviewPanel 渲染开关。"""
-        self.content.setVisible(self._expanded)
-        if self._expanded:
-            self.handle.setText("›")
-            self.handle.setStyleSheet(self._HANDLE_QSS_EXPANDED)
-            self.handle.setToolTip("折叠预览")
-        else:
-            self.handle.setText("‹")
-            self.handle.setStyleSheet(self._HANDLE_QSS_COLLAPSED)
-            self.handle.setToolTip("展开预览")
-        # 渲染开关
-        self.preview_panel.set_active(self._expanded)
-        # 通知主窗口同步窗口宽度（首次构建时跳过避免无效 resize）
-        if not initial:
-            self.expansion_changed.emit(self._expanded)
-
-    @property
-    def is_expanded(self) -> bool:
-        return self._expanded
-
-    def setEnabled(self, enabled: bool) -> None:
-        # 处理中也允许折叠/展开把手；只锁内容区
-        self.content.setEnabled(enabled)
-
-
 class MainWindow(QMainWindow):
     """主窗口 — 职责：创建框架、实例化 AppState、传给 Tab、连接 START。"""
-    
+
+    PREVIEW_WIDTH = 360  # 预览侧栏固定宽度
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("极简水印")
@@ -319,12 +142,12 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
 
-        # === Phase 27：顶层水平双列 — 左原内容 + 右预览侧栏（默认折叠） ===
+        # === 顶层水平双列 — 左原内容 + 右预览侧栏 ===
         root = QHBoxLayout(central)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(0)
 
-        # ---- 左列：原有的纵向布局（缩略图 + 底部操作 + 配置抽屉） ----
+        # ---- 左列：纵向布局（缩略图 + 底部操作 + 配置抽屉） ----
         left_col = QWidget()
         layout = QVBoxLayout(left_col)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -343,8 +166,6 @@ class MainWindow(QMainWindow):
         bottom_layout.setSpacing(6)
 
         # 输出路径行：输入框自适应，浏览/覆盖右对齐
-        # Phase 9：UI 控件**不再**直接读 AppState 字段做初始化 — 改为订阅 output_changed
-        # 由 AppState.load_from_disk → _emit_full_refresh 推送一次完整 UI 同步。
         output_row = QHBoxLayout()
         output_row.addWidget(QLabel("输出路径："))
         self.output_input = QLineEdit()
@@ -362,20 +183,13 @@ class MainWindow(QMainWindow):
 
         bottom_layout.addLayout(output_row)
 
-        # 进度条 + START按钮（同一行）
+        # 进度条 + START按钮 + 预览切换（同一行）
         progress_row = QHBoxLayout()
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setFixedHeight(28)
         progress_row.addWidget(self.progress_bar, 1)
-
-        # 恢复默认按钮（Phase 6.10）
-        self.reset_btn = QPushButton("恢复默认")
-        self.reset_btn.setFixedHeight(28)
-        self.reset_btn.setToolTip("把所有水印 / 高级 / 输出配置重置为初始值")
-        self.reset_btn.clicked.connect(self._on_reset_defaults)
-        progress_row.addWidget(self.reset_btn)
 
         self.about_btn = QPushButton("关于")
         self.about_btn.setFixedHeight(28)
@@ -396,6 +210,13 @@ class MainWindow(QMainWindow):
         self.start_btn.clicked.connect(self._on_start)
         progress_row.addWidget(self.start_btn)
 
+        # 预览切换按钮（正方形，字符图标）
+        self.preview_toggle_btn = QPushButton("▸")
+        self.preview_toggle_btn.setFixedSize(28, 28)
+        self.preview_toggle_btn.setToolTip("显示实时预览")
+        self.preview_toggle_btn.clicked.connect(self._toggle_preview)
+        progress_row.addWidget(self.preview_toggle_btn)
+
         bottom_layout.addLayout(progress_row)
 
         # 配置抽屉（紧接进度条下方）
@@ -409,9 +230,16 @@ class MainWindow(QMainWindow):
 
         root.addWidget(left_col, 1)  # 左列吃满剩余宽度
 
-        # ---- 右列：可折叠预览侧栏（Phase 27） ----
-        self.preview_sidebar = CollapsiblePreviewSidebar(self.app_state)
-        self.preview_sidebar.expansion_changed.connect(self._on_sidebar_expansion_changed)
+        # ---- 右列：预览侧栏（默认折叠，由按钮控制） ----
+        self.preview_sidebar = QWidget()
+        self.preview_sidebar.setFixedWidth(self.PREVIEW_WIDTH)
+        self.preview_sidebar.setVisible(False)
+        sidebar_layout = QVBoxLayout(self.preview_sidebar)
+        sidebar_layout.setContentsMargins(8, 8, 8, 8)
+        sidebar_layout.setSpacing(0)
+
+        self.preview_panel = PreviewPanel(self.app_state)
+        sidebar_layout.addWidget(self.preview_panel)
         root.addWidget(self.preview_sidebar)
 
         # 连接 AppState 信号（Phase 9：output_changed 也接入，让持久化值能驱动 UI）
@@ -419,17 +247,28 @@ class MainWindow(QMainWindow):
         self.app_state.output_changed.connect(self._on_state_output_changed)
         self.app_state.progress_changed.connect(self._on_progress_changed)
 
-    def _on_sidebar_expansion_changed(self, expanded: bool) -> None:
-        """Phase 27：预览侧栏折叠/展开 → 同步主窗口宽度。
+    def _toggle_preview(self) -> None:
+        visible = not self.preview_sidebar.isVisible()
 
-        - 展开：当前宽度 + 内容区宽 → 让用户立刻看到预览区
-        - 折叠：当前宽度 - 内容区宽 → 主窗口收回紧凑形态
-        """
-        delta = self.preview_sidebar.SIDEBAR_CONTENT_WIDTH
-        if not expanded:
-            delta = -delta
-        new_w = max(self.minimumWidth(), self.width() + delta)
-        self.resize(new_w, self.height())
+        if visible:
+            # 展开：预览区宽度 = 当前主窗口宽度的 1.5 倍
+            preview_w = int(self.width() * 1.5)
+            self.preview_sidebar.setFixedWidth(preview_w)
+            # 先拓展主窗口，再显示预览区，避免瞬间挤压左列 UI
+            new_w = self.width() + preview_w
+            self.resize(max(new_w, self.minimumWidth()), self.height())
+            self.preview_sidebar.setVisible(True)
+            self.preview_panel.set_active(True)
+            self.preview_toggle_btn.setText("◂")
+            self.preview_toggle_btn.setToolTip("隐藏预览")
+        else:
+            # 折叠：先隐藏预览区，再收回宽度
+            self.preview_sidebar.setVisible(False)
+            self.preview_panel.set_active(False)
+            self.preview_toggle_btn.setText("▸")
+            self.preview_toggle_btn.setToolTip("显示实时预览")
+            new_w = max(self.width() - self.preview_sidebar.width(), self.minimumWidth())
+            self.resize(new_w, self.height())
     
     # ---- 事件处理 ----
     def _on_files_added(self, paths):
@@ -621,25 +460,6 @@ class MainWindow(QMainWindow):
         self.app_state.set_processing(False, 0, "已取消")
         self._set_processing_state(False)
 
-    def _on_reset_defaults(self):
-        """Phase 6.10：恢复全部配置为默认值（带确认）。
-
-        Phase 10.1 (P1)：移除直接写 ``output_input`` / ``override_check`` 的冗余 UI 同步
-        —— ``app_state.reset_to_defaults()`` 内部会调 ``_emit_full_refresh`` 触发
-        ``_on_state_output_changed``，由 SSOT 信号链统一回填，本函数不再绕过它。
-        """
-        ret = QMessageBox.question(
-            self,
-            "确认恢复默认",
-            "将清除所有水印、高级、输出配置并恢复初始值。\n是否继续？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if ret != QMessageBox.StandardButton.Yes:
-            return
-        self.app_state.reset_to_defaults()
-        with contextlib.suppress(Exception):
-            self.statusBar().showMessage("✓ 已恢复默认配置", 5000)
     
     def _on_progress_changed(self, progress: int, status: str):
         self.progress_bar.setValue(progress)
@@ -653,8 +473,8 @@ class MainWindow(QMainWindow):
         self.about_btn.setEnabled(not processing)
         self.thumb_container.setEnabled(not processing)
         self.config_drawer.setEnabled(not processing)
-        # Phase 27：处理期间也锁定预览侧栏内容区
         self.preview_sidebar.setEnabled(not processing)
+        self.preview_toggle_btn.setEnabled(not processing)
         self.output_input.setEnabled(not processing)
         self.override_check.setEnabled(not processing)
     
@@ -677,8 +497,7 @@ class MainWindow(QMainWindow):
 
         # 2) 预览渲染线程
         try:
-            # Phase 27：预览面板已迁至右侧侧栏
-            preview_thread = getattr(self.preview_sidebar.preview_panel, "_thread", None)
+            preview_thread = getattr(self.preview_panel, "_thread", None)
             if preview_thread is not None and preview_thread.isRunning():
                 preview_thread.cancel()
                 preview_thread.wait(2000)

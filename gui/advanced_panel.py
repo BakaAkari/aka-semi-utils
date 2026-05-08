@@ -164,6 +164,11 @@ class AdvancedPanel(QWidget):
         self._setup_resize_group(resize_group)
         content_layout.addWidget(resize_group)
 
+        # 危险操作：恢复默认
+        danger_group = CollapsibleGroup("重置")
+        self._setup_danger_group(danger_group)
+        content_layout.addWidget(danger_group)
+
         content_layout.addStretch()
         
         scroll.setWidget(content)
@@ -383,6 +388,36 @@ class AdvancedPanel(QWidget):
         trim_row.addWidget(self.trim_threshold)
         trim_row.addStretch()
         group.add_layout(trim_row)
+
+    def _setup_danger_group(self, group: CollapsibleGroup):
+        """危险操作 — 恢复默认。"""
+        hint = QLabel("⚠ 此操作会清除所有水印、高级、输出配置并恢复为初始默认值。")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #888888; font-size: 11px;")
+        group.add_widget(hint)
+
+        btn_row = QHBoxLayout()
+        self.reset_btn = QPushButton("恢复默认")
+        self.reset_btn.setFixedHeight(28)
+        self.reset_btn.setToolTip("把所有水印 / 高级 / 输出配置重置为初始值")
+        self.reset_btn.clicked.connect(self._on_reset_defaults)
+        btn_row.addWidget(self.reset_btn)
+        btn_row.addStretch()
+        group.add_layout(btn_row)
+
+    def _on_reset_defaults(self):
+        """恢复全部配置为默认值（带确认）。"""
+        from PyQt6.QtWidgets import QMessageBox
+        ret = QMessageBox.question(
+            self,
+            "确认恢复默认",
+            "将清除所有水印、高级、输出配置并恢复初始值。\n是否继续？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if ret != QMessageBox.StandardButton.Yes:
+            return
+        self.state.reset_to_defaults()
 
     def _setup_concat_group(self, group: CollapsibleGroup):
         """拼接与对齐设置。"""
