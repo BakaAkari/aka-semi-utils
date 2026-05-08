@@ -1,12 +1,61 @@
-.idea
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ===== 测试 / 静态分析缓存 =====
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# ===== 打包 / 构建产物 =====
+build/
+dist/
+*.egg-info/
+*.spec.bak
+
+# ===== 虚拟环境 =====
+.venv/
+venv/
+env/
+
+# ===== IDE / 编辑器 =====
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ===== 系统垃圾 =====
 .DS_Store
-release
-input
-output
-__pycache__
-logos/logo_psds
+Thumbs.db
+
+# ===== 项目运行时 =====
+release/
+input/
+output/
+logs/
+tmp/
 exiftool
-build
-dist
-logs
-tmp
+exiftool.exe
+
+# ===== 隐私内容（用户私有数据，不入库） =====
+# 用户签名图（个人手写签名，敏感）
+config/signatures/*
+!config/signatures/.gitkeep
+# 用户自定义 logo（个人版权 / 商标内容）
+config/logos/custom/*
+!config/logos/custom/.gitkeep
+# 用户自定义模板与预设
+config/presets/*
+!config/presets/.gitkeep
+config/templates/*.json
+!config/templates/.gitkeep
+
+# ===== 旧路径兜底（历史遗留） =====
+logos/logo_psds

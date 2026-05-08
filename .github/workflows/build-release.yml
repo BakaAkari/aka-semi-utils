@@ -1,0 +1,184 @@
+name: Build & Release (Windows / macOS / Linux)
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # 需要写权限才能创建 Release / 上传资产
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            exiftool_url: "https://exiftool.org/exiftool-13.10_64.zip"
+            exiftool_ext: zip
+            artifact_ext: zip
+          - os: macos-latest
+            platform: macos
+            exiftool_url: "https://exiftool.org/ExifTool-13.10.pkg"
+            exiftool_ext: pkg
+            artifact_ext: tar.gz
+          - os: ubuntu-latest
+            platform: linux
+            exiftool_url: ""    # Linux 用系统包管理器
+            exiftool_ext: ""
+            artifact_ext: tar.gz
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      # ============================================================
+      # 1. 基础环境
+      # ============================================================
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Setup Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: |
+          uv sync --no-dev
+          uv pip install pyinstaller
+
+      # ============================================================
+      # 2. 下载 exiftool（各平台不同策略）
+      # ============================================================
+      - name: Download exiftool (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "${{ matrix.exiftool_url }}" -OutFile exiftool.zip -UseBasicParsing
+          Expand-Archive -Path exiftool.zip -DestinationPath exiftool_extracted -Force
+          New-Item -ItemType Directory -Force -Path exiftool | Out-Null
+          $found = Get-ChildItem -Path exiftool_extracted -Filter "exiftool*.exe" -Recurse | Select-Object -First 1
+          if (-not $found) { throw "exiftool.exe not found" }
+          Copy-Item $found.FullName -Destination "exiftool/exiftool.exe" -Force
+          $filesDir = Get-ChildItem -Path exiftool_extracted -Filter "exiftool_files" -Directory -Recurse | Select-Object -First 1
+          if ($filesDir) { Copy-Item $filesDir.FullName -Destination "exiftool/exiftool_files" -Recurse -Force }
+
+      - name: Download exiftool (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          # macOS 上 Homebrew 安装最省事
+          brew install exiftool
+          # 把 exiftool 二进制拷贝到项目 exiftool/ 目录（打包后放到 EXE 同级）
+          mkdir -p exiftool
+          EXIFTOOL_BIN=$(which exiftool)
+          # exiftool 是 perl 脚本，需要把它和依赖打包
+          cp "$EXIFTOOL_BIN" exiftool/exiftool
+          chmod +x exiftool/exiftool
+          # 拷贝 perl lib（exiftool 自带的 Image::ExifTool 模块）
+          EXIFTOOL_LIB=$(perl -MImage::ExifTool -e 'print $INC{"Image/ExifTool.pm"}' 2>/dev/null || true)
+          if [ -n "$EXIFTOOL_LIB" ]; then
+            LIB_DIR=$(dirname "$(dirname "$EXIFTOOL_LIB")")
+            cp -R "$LIB_DIR/Image" exiftool/ 2>/dev/null || true
+          fi
+
+      - name: Install exiftool (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libimage-exiftool-perl
+          mkdir -p exiftool
+          cp "$(which exiftool)" exiftool/exiftool
+          chmod +x exiftool/exiftool
+
+      # ============================================================
+      # 3. PyInstaller 构建
+      # ============================================================
+      - name: Run PyInstaller
+        run: uv run pyinstaller scripts/build.spec --clean --noconfirm
+
+      - name: Bundle exiftool into dist
+        shell: bash
+        run: |
+          cp -R exiftool "dist/aka-semi-utils/exiftool"
+          echo "=== dist/aka-semi-utils top-level ==="
+          ls -la "dist/aka-semi-utils/" | head -20
+
+      # ============================================================
+      # 4. 冒烟测试
+      # ============================================================
+      - name: Smoke test
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            test -f "dist/aka-semi-utils/aka-semi-utils.exe" || { echo "EXE missing"; exit 1; }
+            test -f "dist/aka-semi-utils/exiftool/exiftool.exe" || { echo "exiftool missing"; exit 1; }
+          else
+            test -f "dist/aka-semi-utils/aka-semi-utils" || { echo "binary missing"; exit 1; }
+            test -f "dist/aka-semi-utils/exiftool/exiftool" || { echo "exiftool missing"; exit 1; }
+          fi
+          test -d "dist/aka-semi-utils/_internal/config/fonts" || { echo "fonts missing"; exit 1; }
+          test -d "dist/aka-semi-utils/_internal/config/logos" || { echo "logos missing"; exit 1; }
+          echo "All key artifacts present ✓"
+
+      # ============================================================
+      # 5. 打包压缩
+      # ============================================================
+      - name: Compute version string
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF#refs/tags/}"
+          else
+            VER="dev-${GITHUB_SHA::7}"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Pack artifact (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $name = "aka-semi-utils-${{ matrix.platform }}-${{ steps.version.outputs.version }}.zip"
+          Compress-Archive -Path "dist/aka-semi-utils/*" -DestinationPath $name -Force
+          echo "ARTIFACT_NAME=$name" >> $env:GITHUB_ENV
+          echo "ARTIFACT_PATH=$name" >> $env:GITHUB_ENV
+
+      - name: Pack artifact (macOS / Linux)
+        if: matrix.platform != 'windows'
+        shell: bash
+        run: |
+          NAME="aka-semi-utils-${{ matrix.platform }}-${{ steps.version.outputs.version }}.tar.gz"
+          tar -czf "$NAME" -C dist/aka-semi-utils .
+          echo "ARTIFACT_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "ARTIFACT_PATH=$NAME" >> "$GITHUB_ENV"
+
+      # ============================================================
+      # 6. 上传 artifact
+      # ============================================================
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_PATH }}
+          retention-days: 14
+
+      # ============================================================
+      # 7. 发布 Release（仅 tag 触发）
+      # ============================================================
+      - name: Create / update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARTIFACT_PATH }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

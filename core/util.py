@@ -4,6 +4,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import time
 from functools import wraps
 from pathlib import Path
@@ -59,14 +60,32 @@ def exif_cache_size() -> int:
     """返回当前缓存条目数（测试 / 调试用）。"""
     return len(_EXIF_CACHE)
 
+def _resolve_exiftool_base() -> Path:
+    """解析 exiftool 二进制的搜索基目录。
+
+    - **PyInstaller 冻结模式**（``sys.frozen == True``）：以可执行文件所在目录为基，
+      因为 spec 把 ``exiftool/`` 通过 ``datas`` 投放到 onedir 根（与 EXE 同级）。
+    - **源码运行模式**：以项目根目录为基（``core/util.py`` 上溯两级）。
+    - 仍允许通过环境变量 ``EXIFTOOL_HOME`` 强制指定，便于自检与 CI。
+    """
+    env_override = os.environ.get("EXIFTOOL_HOME")
+    if env_override:
+        return Path(env_override)
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent.parent
+
+
+_EXIFTOOL_BASE = _resolve_exiftool_base()
+
 if platform.system() == 'Windows':
-    EXIFTOOL_PATH = Path('./exiftool/exiftool.exe')
+    EXIFTOOL_PATH = _EXIFTOOL_BASE / 'exiftool' / 'exiftool.exe'
     ENCODING = 'gbk'
 elif shutil.which('exiftool') is not None:
     EXIFTOOL_PATH = shutil.which('exiftool')
     ENCODING = 'utf-8'
 else:
-    EXIFTOOL_PATH = Path('./exiftool/exiftool')
+    EXIFTOOL_PATH = _EXIFTOOL_BASE / 'exiftool' / 'exiftool'
     ENCODING = 'utf-8'
 
 
