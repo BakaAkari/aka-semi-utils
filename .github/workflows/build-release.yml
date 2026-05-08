@@ -19,7 +19,7 @@ jobs:
         include:
           - os: windows-latest
             platform: windows
-            exiftool_url: "https://exiftool.org/exiftool-13.10_64.zip"
+            exiftool_url: "https://exiftool.org/"
             exiftool_ext: zip
             artifact_ext: zip
           - os: macos-latest
@@ -65,7 +65,13 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "${{ matrix.exiftool_url }}" -OutFile exiftool.zip -UseBasicParsing
+          $ErrorActionPreference = 'Stop'
+          $homePage = Invoke-WebRequest -Uri "${{ matrix.exiftool_url }}" -UseBasicParsing
+          $match = [regex]::Match($homePage.Content, 'exiftool-[0-9.]+_64\.zip')
+          if (-not $match.Success) { throw "Unable to discover latest Windows exiftool zip from exiftool.org" }
+          $zipUrl = "https://exiftool.org/$($match.Value)"
+          Write-Host "Downloading $zipUrl"
+          Invoke-WebRequest -Uri $zipUrl -OutFile exiftool.zip -UseBasicParsing
           Expand-Archive -Path exiftool.zip -DestinationPath exiftool_extracted -Force
           New-Item -ItemType Directory -Force -Path exiftool | Out-Null
           $found = Get-ChildItem -Path exiftool_extracted -Filter "exiftool*.exe" -Recurse | Select-Object -First 1

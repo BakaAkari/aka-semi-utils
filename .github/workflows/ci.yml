@@ -54,7 +54,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libimage-exiftool-perl libegl1-mesa
+          sudo apt-get install -y libimage-exiftool-perl libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
 
       - name: Install exiftool (macOS)
         if: matrix.os == 'macos-latest'
