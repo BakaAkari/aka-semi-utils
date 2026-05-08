@@ -476,7 +476,7 @@ class MainWindow(QMainWindow):
               支持 EXIF 信息水印、品牌 Logo、签名水印、实时预览、
               批量处理、错误汇总和三平台打包发布。
             </p>
-            <p><b>版本：</b>2.1.5</p>
+            <p><b>版本：</b>2.1.6</p>
             <p><b>项目：</b>github.com/BakaAkari/aka-semi-utils</p>
             <p><b>许可证：</b>Apache License 2.0</p>
             """.strip(),

@@ -1,6 +1,6 @@
 [project]
 name = "semi-photo-utils"
-version = "2.1.5"
+version = "2.1.6"
 description = "PyQt6 GUI photo watermark tool with EXIF, logo, signature, live preview, and batch processing"
 readme = "README.md"
 requires-python = ">=3.13"
