@@ -36,10 +36,10 @@ from .thumb_grid import ThumbContainer
 
 
 class CollapsibleConfigPanel(QFrame):
-    """可折叠配置抽屉 — 包含「水印配置 / 高级设置」两个 Tab。
+    """可折叠配置抽屉 — 包含「水印配置 / 全局参数」两个 Tab。
 
     Phase 27：预览 Tab 已抽离到右侧 :class:`CollapsiblePreviewSidebar`，
-    本面板只负责水印配置 + 高级设置。
+    本面板只负责水印配置 + 全局参数。
     """
 
     def __init__(self, state: AppState, project_root: Path, parent=None, expanded: bool = True):
@@ -52,7 +52,7 @@ class CollapsibleConfigPanel(QFrame):
         # Phase 6.10：默认展开配置抽屉，让新用户立即看到水印配置入口
         if self._expanded:
             self.content.setVisible(True)
-            self.header.setText("▼ 高级配置")
+            self.header.setText("▼ 全局参数")
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -60,7 +60,7 @@ class CollapsibleConfigPanel(QFrame):
         layout.setSpacing(0)
 
         # 折叠标题栏
-        self.header = QPushButton("▶ 高级配置")
+        self.header = QPushButton("▶ 全局参数")
         self.header.setStyleSheet("""
             QPushButton {
                 border: none;
@@ -88,7 +88,7 @@ class CollapsibleConfigPanel(QFrame):
         content_layout.setContentsMargins(8, 8, 8, 8)
         content_layout.setSpacing(8)
 
-        # Tab 区（Phase 27：预览 Tab 已迁出，只剩水印配置 + 高级设置）
+        # Tab 区（Phase 27：预览 Tab 已迁出，只剩水印配置 + 全局参数）
         self.tabs = QTabWidget()
         self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -96,7 +96,7 @@ class CollapsibleConfigPanel(QFrame):
         self.tabs.addTab(self.config_panel, "水印配置")
 
         self.advanced_panel = AdvancedPanel(self.state)
-        self.tabs.addTab(self.advanced_panel, "高级设置")
+        self.tabs.addTab(self.advanced_panel, "全局参数")
 
         content_layout.addWidget(self.tabs)
         layout.addWidget(self.content)
@@ -104,7 +104,7 @@ class CollapsibleConfigPanel(QFrame):
     def _toggle(self):
         self._expanded = not self._expanded
         self.content.setVisible(self._expanded)
-        self.header.setText("▼ 高级配置" if self._expanded else "▶ 高级配置")
+        self.header.setText("▼ 全局参数" if self._expanded else "▶ 全局参数")
 
     def setEnabled(self, enabled: bool):
         self.content.setEnabled(enabled)

@@ -60,6 +60,7 @@ from PyQt6.QtWidgets import (
 
 from gui.field_registry import FieldRegistry, get_default_registry
 from gui.models import AppState, CornerConfig, FieldChip, LogoConfig
+from gui.wheel_guard import guard_wheel, guard_wheel_for_children
 
 # ---------- 常量 ----------
 
@@ -246,6 +247,7 @@ class ChipRowWidget(QFrame):
                 continue
             self.type_combo.addItem(fdef.label_zh, userData=fdef.field_id)
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
+        guard_wheel(self.type_combo)
         layout.addWidget(self.type_combo, 1)
 
         # ⚙ 详情
@@ -701,6 +703,7 @@ class LogoTab(QWidget):
 
         outer.addLayout(form)
         outer.addStretch(1)
+        guard_wheel_for_children(self)
 
     # ---- 加载 / 提交 ----
 
@@ -895,6 +898,7 @@ class SignatureTab(QWidget):
 
         outer.addLayout(form)
         outer.addStretch(1)
+        guard_wheel_for_children(self)
 
     # ---- 加载 / 提交 ----
 
@@ -1011,6 +1015,7 @@ class ConfigPanel(QWidget):
 
         wm_inner_layout.addStretch(1)
         scroll.setWidget(wm_inner)
+        guard_wheel_for_children(wm_inner)
         wm_layout.addWidget(scroll)
         self.tabs.addTab(watermark_tab, "水印")
 

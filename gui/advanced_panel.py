@@ -1,4 +1,4 @@
-"""高级设置面板 - 所有分组默认折叠。
+"""全局参数面板 - 所有分组默认折叠。
 
 Phase 25：签名相关 UI 已迁移至 :class:`gui.config_panel.SignatureTab`；本面板
 不再持有 ``signature_*`` 控件，但仍尊重并保留 :class:`AdvancedConfig` 中的签名
@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .models import AdvancedConfig, AppState
+from .wheel_guard import guard_wheel_for_children
 
 
 class CollapsibleGroup(QFrame):
@@ -97,7 +98,7 @@ class CollapsibleGroup(QFrame):
 
 
 class AdvancedPanel(QWidget):
-    """高级设置面板 — 内部可滚动。"""
+    """全局参数面板 — 内部可滚动。"""
 
     def __init__(self, state: AppState, parent=None):
         super().__init__(parent)
@@ -166,6 +167,7 @@ class AdvancedPanel(QWidget):
         content_layout.addStretch()
         
         scroll.setWidget(content)
+        guard_wheel_for_children(content)
         layout.addWidget(scroll)
 
     def _setup_font_group(self, group: CollapsibleGroup):

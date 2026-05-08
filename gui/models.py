@@ -81,7 +81,7 @@ class LogoConfig:
 
 @dataclass
 class AdvancedConfig:
-    """高级设置配置。"""
+    """全局参数配置。"""
     # 全局字体
     global_font: str = "NotoSansCJKsc-Regular.otf"
     global_color: str = "#242424"  # 深灰，与默认白底水印对比
@@ -265,7 +265,7 @@ class AppState(QObject):
     files_changed = pyqtSignal(list)            # 文件列表变更
     output_changed = pyqtSignal()               # 输出配置变更
     watermark_changed = pyqtSignal()            # 水印配置变更
-    advanced_changed = pyqtSignal()             # 高级设置变更
+    advanced_changed = pyqtSignal()             # 全局参数变更
     state_reloaded = pyqtSignal()               # 外部全量替换（load/reset/任何整组字段重置）
     progress_changed = pyqtSignal(int, str)     # 进度, 状态文字
 
@@ -287,7 +287,7 @@ class AppState(QObject):
         # 全局自定义文本
         self.custom_text: str = ""
 
-        # 高级设置
+        # 全局参数
         self.advanced = AdvancedConfig()
 
         # 输出配置
@@ -368,9 +368,9 @@ class AppState(QObject):
         self.custom_text = text
         self.watermark_changed.emit()
 
-    # ---- 高级设置 ----
+    # ---- 全局参数 ----
     def set_advanced_config(self, config: AdvancedConfig):
-        """设置高级配置。"""
+        """设置全局参数配置。"""
         self.advanced = config
         self.advanced_changed.emit()
 

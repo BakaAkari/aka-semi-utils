@@ -3,7 +3,7 @@
 职责：
 - 选取当前 ``state.files`` 第一张图作为预览源
 - 在后台线程渲染 watermark pipeline（避免阻塞 UI）
-- debounce：水印/高级配置变化 → 500ms 后才触发渲染
+- debounce：水印/全局参数变化 → 500ms 后才触发渲染
 - 渲染结果用 QPixmap 显示在缩略框中
 
 设计要点：
