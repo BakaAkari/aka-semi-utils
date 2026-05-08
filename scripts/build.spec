@@ -24,7 +24,7 @@ PROJECT_ROOT = Path(SPECPATH).parent  # type: ignore[name-defined]
 
 APP_NAME = "aka-semi-utils"
 ENTRY = str(PROJECT_ROOT / "main.py")
-ICON = str(PROJECT_ROOT / "static" / "logo.ico")
+ICON = str(PROJECT_ROOT / "static" / "icon.ico")
 
 IS_WINDOWS = platform.system() == "Windows"
 IS_MACOS = platform.system() == "Darwin"
