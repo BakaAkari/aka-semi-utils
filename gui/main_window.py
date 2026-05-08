@@ -377,6 +377,12 @@ class MainWindow(QMainWindow):
         self.reset_btn.clicked.connect(self._on_reset_defaults)
         progress_row.addWidget(self.reset_btn)
 
+        self.about_btn = QPushButton("关于")
+        self.about_btn.setFixedHeight(28)
+        self.about_btn.setToolTip("查看极简水印版本与项目说明")
+        self.about_btn.clicked.connect(self._show_about)
+        progress_row.addWidget(self.about_btn)
+
         # START / 取消按钮
         self.cancel_btn = QPushButton("取消")
         self.cancel_btn.setVisible(False)
@@ -457,6 +463,24 @@ class MainWindow(QMainWindow):
         path = QFileDialog.getExistingDirectory(self, "选择输出目录")
         if path:
             self.output_input.setText(path)
+
+    def _show_about(self):
+        """展示当前 GUI 版本的项目说明。"""
+        QMessageBox.about(
+            self,
+            "关于 极简水印",
+            """
+            <h3>极简水印 aka-semi-utils</h3>
+            <p>面向摄影照片的 PyQt6 图形化批量水印工具。</p>
+            <p>
+              支持 EXIF 信息水印、品牌 Logo、签名水印、实时预览、
+              批量处理、错误汇总和三平台打包发布。
+            </p>
+            <p><b>版本：</b>2.1.5</p>
+            <p><b>项目：</b>github.com/BakaAkari/aka-semi-utils</p>
+            <p><b>许可证：</b>Apache License 2.0</p>
+            """.strip(),
+        )
 
     def _on_start(self):
         """开始处理 — 启动真实处理线程。"""
@@ -626,6 +650,7 @@ class MainWindow(QMainWindow):
         """切换处理中/就绪状态。"""
         self.start_btn.setVisible(not processing)
         self.cancel_btn.setVisible(processing)
+        self.about_btn.setEnabled(not processing)
         self.thumb_container.setEnabled(not processing)
         self.config_drawer.setEnabled(not processing)
         # Phase 27：处理期间也锁定预览侧栏内容区
