@@ -1,0 +1,114 @@
+{
+  "version": 2,
+  "output": {
+    "path": "{source_dir}/logo",
+    "override": true
+  },
+  "corners": {
+    "left_top": {
+      "chips": [
+        {
+          "field_id": "make",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        },
+        {
+          "field_id": "camera_model",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        }
+      ],
+      "fields": [],
+      "separator": " ",
+      "font": "",
+      "color": ""
+    },
+    "left_bottom": {
+      "chips": [
+        {
+          "field_id": "focal_length",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        },
+        {
+          "field_id": "aperture",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        },
+        {
+          "field_id": "shutter",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        },
+        {
+          "field_id": "iso",
+          "custom_text": "",
+          "font": "",
+          "color": ""
+        }
+      ],
+      "fields": [],
+      "separator": " ",
+      "font": "",
+      "color": ""
+    },
+    "right_top": {
+      "chips": [],
+      "fields": [],
+      "separator": " ",
+      "font": "",
+      "color": ""
+    },
+    "right_bottom": {
+      "chips": [],
+      "fields": [],
+      "separator": " ",
+      "font": "",
+      "color": ""
+    }
+  },
+  "logo": {
+    "enabled": "auto",
+    "position": "right",
+    "color": "#D8D8D6",
+    "custom_path": ""
+  },
+  "custom_text": "",
+  "advanced": {
+    "global_font": "NotoSansCJKsc-Regular.otf",
+    "global_color": "#242424",
+    "corner_text_height_px": 0,
+    "footer_height_px": 0,
+    "logo_height_px": 0,
+    "left_margin": 0,
+    "right_margin": 0,
+    "top_margin": 0,
+    "bottom_margin": 0,
+    "margin_color": "#FFFFFF",
+    "border_radius": 0,
+    "shadow_radius": 0,
+    "shadow_color": "#000000",
+    "quality": 95,
+    "subsampling": 0,
+    "blur_radius": 0,
+    "ratio_enabled": false,
+    "ratio": "3:4",
+    "scale": 1.0,
+    "trim_enabled": false,
+    "trim_threshold": 0.0,
+    "concat_direction": "vertical",
+    "alignment_mode": "center",
+    "signature_enabled": false,
+    "signature_path": "",
+    "signature_invert_mono": false,
+    "signature_position": "middle_center",
+    "signature_width_ratio": 0.15,
+    "signature_offset_x": 0,
+    "signature_offset_y": 0
+  }
+}

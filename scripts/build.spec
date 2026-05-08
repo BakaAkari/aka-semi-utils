@@ -32,8 +32,18 @@ IS_MACOS = platform.system() == "Darwin"
 # ---------------------------------------------------------------------------
 # 数据资源
 # ---------------------------------------------------------------------------
+# Release 包不直接打入开发者本机自动保存的 config/user.json，避免把私人路径、
+# 自定义签名或自定义 Logo 一起分发。打包时使用干净的 release 默认配置。
+# PyInstaller datas 的二元组目标值是目录，因此先打入 config/user.release.json，
+# 再由下方 Tree/TOC 规则重命名成包内的 config/user.json。
 datas = [
-    (str(PROJECT_ROOT / "config"), "config"),
+    (str(PROJECT_ROOT / "config" / "config.ini"), "config"),
+    (str(PROJECT_ROOT / "config" / "user.release.json"), "config"),
+    (str(PROJECT_ROOT / "config" / "fonts"), "config/fonts"),
+    (str(PROJECT_ROOT / "config" / "logos"), "config/logos"),
+    (str(PROJECT_ROOT / "config" / "presets"), "config/presets"),
+    (str(PROJECT_ROOT / "config" / "signatures"), "config/signatures"),
+    (str(PROJECT_ROOT / "config" / "templates"), "config/templates"),
     (str(PROJECT_ROOT / "static"), "static"),
     (str(PROJECT_ROOT / "render.jinja2"), "."),
 ]
@@ -95,6 +105,14 @@ a = Analysis(  # noqa: F821 - PyInstaller 注入
     excludes=excludes,
     noarchive=False,
 )
+
+# 把 release 默认配置在产物中重命名为 config/user.json，同时确保不会把开发机
+# config/user.json 打入 release 包。
+a.datas = [
+    ("config/user.json" if dest == "config/user.release.json" else dest, src, typ)
+    for dest, src, typ in a.datas
+    if dest != "config/user.json"
+]
 
 pyz = PYZ(a.pure)  # noqa: F821
 
