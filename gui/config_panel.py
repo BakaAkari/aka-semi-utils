@@ -194,18 +194,20 @@ class ChipRowWidget(QFrame):
         self.detail_btn.clicked.connect(self._open_detail_popup)
         layout.addWidget(self.detail_btn)
 
-        # ◀ ▶ ×
+        # ↑ ↓ ×
+        # 字段在 UI 中是纵向列表，但渲染时仍按列表顺序做左右排序：
+        # ↑ = 排序提前（原左移），↓ = 排序后移（原右移）。
         self.left_btn = QToolButton()
-        self.left_btn.setText("◀")
+        self.left_btn.setText("↑")
         self.left_btn.setFixedWidth(24)
-        self.left_btn.setToolTip("左移")
+        self.left_btn.setToolTip("上移（排序提前）")
         self.left_btn.clicked.connect(lambda: self.move_left_requested.emit(self))
         layout.addWidget(self.left_btn)
 
         self.right_btn = QToolButton()
-        self.right_btn.setText("▶")
+        self.right_btn.setText("↓")
         self.right_btn.setFixedWidth(24)
-        self.right_btn.setToolTip("右移")
+        self.right_btn.setToolTip("下移（排序后移）")
         self.right_btn.clicked.connect(lambda: self.move_right_requested.emit(self))
         layout.addWidget(self.right_btn)
 
@@ -331,12 +333,13 @@ class CornerSection(QFrame):
         header.addWidget(self.summary_label)
         header.addStretch(1)
 
-        # 角级字号
+        # 角级字号（固定像素高度）：下拉菜单避免输入过小值导致预览文字几乎不可见。
         header.addWidget(QLabel("字号"))
-        self.corner_size = QSpinBox()
-        self.corner_size.setRange(8, 128)
-        self.corner_size.setFixedWidth(50)
-        self.corner_size.valueChanged.connect(self._on_corner_size_changed)
+        self.corner_size = QComboBox()
+        self.corner_size.setFixedWidth(96)
+        for label, value in self._corner_size_options():
+            self.corner_size.addItem(label, value)
+        self.corner_size.currentIndexChanged.connect(self._on_corner_size_changed)
         header.addWidget(self.corner_size)
 
         # 重置角级字号
@@ -420,10 +423,11 @@ class CornerSection(QFrame):
         self.sep_input.setText(self.corner.separator)
         self.sep_input.blockSignals(False)
 
-        # 角级字号
+        # 角级字号：旧输入框遗留值会归一化到最近的安全下拉项，避免预览用过小高度。
         self.corner_size.blockSignals(True)
-        self.corner_size.setValue(self.corner.font_size or 0)
+        normalized_size = self._set_corner_size_combo(self.corner.font_size)
         self.corner_size.blockSignals(False)
+        self.corner.font_size = normalized_size
         self._refresh_summary()
         self._refresh_add_btn()
 
@@ -505,8 +509,38 @@ class CornerSection(QFrame):
 
     # ---- 角级字号 ----
 
-    def _on_corner_size_changed(self, value: int) -> None:
-        self.corner.font_size = value if value > 0 else 0
+    @staticmethod
+    def _corner_size_options() -> list[tuple[str, int]]:
+        """角落文本固定高度选项；0 表示继承全局/自适应。"""
+        return [
+            ("继承", 0),
+            ("小 32px", 32),
+            ("较小 40px", 40),
+            ("标准 48px", 48),
+            ("中等 56px", 56),
+            ("较大 64px", 64),
+            ("大 80px", 80),
+            ("特大 96px", 96),
+            ("超大 128px", 128),
+        ]
+
+    def _set_corner_size_combo(self, value: int) -> int:
+        """根据持久化字号刷新下拉；旧配置的未知值映射到最近的安全选项。"""
+        normalized = self._nearest_corner_size(value)
+        idx = self.corner_size.findData(normalized)
+        self.corner_size.setCurrentIndex(idx if idx >= 0 else 0)
+        return normalized
+
+    def _nearest_corner_size(self, value: int) -> int:
+        """把旧输入框遗留值映射为当前下拉菜单支持的安全字号。"""
+        if value <= 0:
+            return 0
+        choices = [v for _label, v in self._corner_size_options() if v > 0]
+        return min(choices, key=lambda choice: abs(choice - value))
+
+    def _on_corner_size_changed(self, _idx: int) -> None:
+        value = self.corner_size.currentData()
+        self.corner.font_size = int(value) if isinstance(value, int) and value > 0 else 0
         self._push_to_state()
 
     def _reset_corner_style(self) -> None:
@@ -514,7 +548,7 @@ class CornerSection(QFrame):
             return
         self.corner.font_size = 0
         self.corner_size.blockSignals(True)
-        self.corner_size.setValue(0)
+        self._set_corner_size_combo(0)
         self.corner_size.blockSignals(False)
         self._push_to_state()
 
