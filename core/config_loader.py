@@ -40,7 +40,7 @@ templates_dir = TEMPLATES_DIR
 
 # 默认值
 DEFAULT_CONFIG = """[DEFAULT]
-output_folder = {source_dir}/logo
+output_folder = {source_dir}/output
 remember_output = True
 quality = 60
 subsampling = 2
@@ -51,7 +51,6 @@ logo_path =
 override_existed = True
 signature_enabled = False
 signature_path =
-signature_color = black
 
 [gui]
 window_width = 480
@@ -167,11 +166,11 @@ def get_output_folder(config: ConfigParser, source_dir: Path | str | None = None
     """
     解析输出路径。支持变量和回退。
     """
-    raw = config.get("DEFAULT", "output_folder", fallback="{source_dir}/logo").strip()
+    raw = config.get("DEFAULT", "output_folder", fallback="{source_dir}/output").strip()
     remember = config.getboolean("DEFAULT", "remember_output", fallback=True)
 
     if not raw:
-        raw = "{source_dir}/logo"
+        raw = "{source_dir}/output"
 
     # 变量替换
     if raw.startswith("{"):
@@ -186,9 +185,9 @@ def get_output_folder(config: ConfigParser, source_dir: Path | str | None = None
     if not path.is_absolute() and source_dir is not None:
         path = Path(source_dir) / path
 
-    # 如果路径以 /logo 结尾，保持不变；否则自动追加
-    if "logo" not in path.name.lower():
-        path = path / "logo"
+    # 如果路径以 /output 结尾，保持不变；否则自动追加
+    if "output" not in path.name.lower():
+        path = path / "output"
 
     # 验证回退
     if remember:
@@ -196,7 +195,7 @@ def get_output_folder(config: ConfigParser, source_dir: Path | str | None = None
             path.mkdir(parents=True, exist_ok=True)
         except OSError:
             logger.warning(f"输出路径不可写: {path}，回退到默认")
-            path = Path(source_dir) / "logo" if source_dir is not None else Path.home() / "Desktop" / "logo"
+            path = Path(source_dir) / "output" if source_dir is not None else Path.home() / "Desktop" / "output"
             path.mkdir(parents=True, exist_ok=True)
 
     return path

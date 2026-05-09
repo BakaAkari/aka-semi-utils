@@ -32,6 +32,10 @@ class FontPreview(QLabel):
     
     def update_preview(self):
         """重新生成预览图。"""
+        if not self.font_name:
+            self.setText("继承")
+            self.setPixmap(QPixmap())
+            return
         try:
             img = self._generate_preview_image()
             # PIL → QPixmap

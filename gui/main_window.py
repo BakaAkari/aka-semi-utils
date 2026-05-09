@@ -48,7 +48,7 @@ class CollapsibleConfigPanel(QFrame):
         # Phase 6.10：默认展开配置抽屉，让新用户立即看到水印配置入口
         if self._expanded:
             self.content.setVisible(True)
-            self.header.setText("▼ 全局参数")
+            self.header.setText("▼ 设置")
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -56,7 +56,7 @@ class CollapsibleConfigPanel(QFrame):
         layout.setSpacing(0)
 
         # 折叠标题栏
-        self.header = QPushButton("▶ 全局参数")
+        self.header = QPushButton("▶ 设置")
         self.header.setStyleSheet("""
             QPushButton {
                 border: none;
@@ -100,7 +100,7 @@ class CollapsibleConfigPanel(QFrame):
     def _toggle(self):
         self._expanded = not self._expanded
         self.content.setVisible(self._expanded)
-        self.header.setText("▼ 全局参数" if self._expanded else "▶ 全局参数")
+        self.header.setText("▼ 设置" if self._expanded else "▶ 设置")
 
     def setEnabled(self, enabled: bool):
         self.content.setEnabled(enabled)
@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
         output_row = QHBoxLayout()
         output_row.addWidget(QLabel("输出路径："))
         self.output_input = QLineEdit()
-        self.output_input.setPlaceholderText("{source_dir}/logo")
+        self.output_input.setPlaceholderText("{source_dir}/output")
         self.output_input.textChanged.connect(self._on_output_changed)
         output_row.addWidget(self.output_input, 1)  # stretch=1，自适应
 
@@ -335,7 +335,7 @@ class MainWindow(QMainWindow):
             return
 
         # 解析输出路径模式
-        output_pattern = self.output_input.text().strip() or "{source_dir}/logo"
+        output_pattern = self.output_input.text().strip() or "{source_dir}/output"
 
         # Phase 9：旧线程残留保护 — 理论上不该发生，仅做兜底
         if getattr(self, "_thread", None) is not None and self._thread.isRunning():

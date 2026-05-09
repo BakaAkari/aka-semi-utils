@@ -65,14 +65,19 @@ PROCESSOR_MAP: dict[str, dict[str, Any]] = {
         "target": "watermark",
         "processor_name": "watermark",
     },
-    # Phase 17：签名 — 串接在 watermark 之后，仅当 signature_enabled 时生成
+    # Phase 17/22/24/26：签名 — 串接在 watermark 之后，仅当 signature_enabled 时生成
+    # Phase 26：signature_color → signature_invert_mono；
+    # Phase 22：signature_height_ratio → signature_width_ratio；
+    # Phase 24：新增 signature_offset_x / signature_offset_y。
     "signature": {
         "fields": [
             "signature_enabled",
             "signature_path",
-            "signature_color",
+            "signature_invert_mono",
             "signature_position",
-            "signature_height_ratio",
+            "signature_width_ratio",
+            "signature_offset_x",
+            "signature_offset_y",
         ],
         "target": "signature",
         "processor_name": "signature",
@@ -150,9 +155,9 @@ def state_to_processors(state: AppState) -> list[dict[str, Any]]:
 def _resolve_chip_style(
     chip: FieldChip, corner: CornerConfig, advanced: AdvancedConfig
 ) -> tuple[str, str]:
-    """按继承链 chip → corner → global 解析 (font, color)。"""
-    font = chip.font or corner.font or advanced.global_font
-    color = chip.color or corner.color or advanced.global_color
+    """解析 (font, color)：字体和颜色统一由全局参数决定。"""
+    font = advanced.global_font
+    color = advanced.global_color
     return font, color
 
 
@@ -215,11 +220,11 @@ def _build_watermark_config(state: AppState) -> dict[str, Any]:
 
         # Phase 11：固定字号 — 把每个 segment 显式带上 height（像素）
         # 0 = 沿用旧自适应（处理器内部仍按 bottom_margin*0.3 推导）。
-        fixed_text_h = state.advanced.corner_text_height_px
+        fixed_text_h = corner_cfg.font_size or state.advanced.corner_text_height_px
 
         # 角级默认样式（用于分隔符 & 单字段路径）
-        default_font = corner_cfg.font or state.advanced.global_font
-        default_color = corner_cfg.color or state.advanced.global_color
+        default_font = state.advanced.global_font
+        default_color = state.advanced.global_color
 
         if not segments:
             corner_node: dict[str, Any] = {

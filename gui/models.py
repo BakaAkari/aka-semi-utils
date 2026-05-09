@@ -38,17 +38,12 @@ class FieldChip:
 
     一个 chip 对应水印一行中的某一个字段（例如「相机型号」）。
 
-    继承链（绘制时实际使用的 font/color）::
-
-        chip.font / chip.color  ->  corner.font / corner.color  ->  global_font / global_color
-
+    font 和 color 统一由全局参数决定，不再在 chip/corner 层级覆盖。
     属性为空字符串时表示「继承上级」；非空表示「本 chip 自定义覆盖」。
     """
 
     field_id: str = "empty"          # FieldRegistry 中的英文 ID
     custom_text: str = ""             # 仅当 field_id == "custom_text" 时使用
-    font: str = ""                    # 空 = 继承 corner.font
-    color: str = ""                   # 空 = 继承 corner.color
 
 
 @dataclass
@@ -60,14 +55,13 @@ class CornerConfig:
     - 新增 ``chips``（``List[FieldChip]``）—— 推荐写法
     - 旧 ``fields``（``List[str]``）—— 仅作向后兼容；
       ``load_from_disk`` 会自动迁移成 ``chips``
-    - ``font`` / ``color`` —— 升级为「角级」默认样式（覆盖全局）
+    - ``font_size`` —— 角级字号覆盖；字体和颜色统一由全局参数决定
     """
 
     chips: list[FieldChip] = field(default_factory=list)  # Phase 6.3 主数据
     fields: list[str] = field(default_factory=list)          # 旧兼容字段（中文标签）
     separator: str = " "                                      # 分隔符（默认空格）
-    font: str = ""                                            # 空 = 继承 advanced.global_font
-    color: str = ""                                           # 空 = 继承 advanced.global_color
+    font_size: int = 0                                        # 0 = 继承 advanced.global_font_size
 
 
 @dataclass
@@ -146,7 +140,7 @@ class AdvancedConfig:
 @dataclass
 class OutputConfig:
     """输出配置。"""
-    path: str = "{source_dir}/logo"
+    path: str = "{source_dir}/output"
     override: bool = True
 
 
@@ -180,13 +174,11 @@ _LEGACY_PARAMS_EXPANSION: tuple[str, ...] = (
 
 
 def _expand_legacy_params(chip: FieldChip) -> list[FieldChip]:
-    """把 legacy ``field_id="params"`` 的 chip 展开为 4 个独立子 chip，继承样式。"""
+    """把 legacy ``field_id="params"`` 的 chip 展开为 4 个独立子 chip。"""
     return [
         FieldChip(
             field_id=fid,
             custom_text="",         # 套餐拆分后子 chip 不携带自定义文本
-            color=chip.color,       # 继承原 chip 颜色
-            font=chip.font,         # 继承原 chip 字体
         )
         for fid in _LEGACY_PARAMS_EXPANSION
     ]
@@ -242,8 +234,7 @@ def _corner_from_dict(data: dict[str, Any] | None) -> CornerConfig:
         chips=chips,
         fields=list(data.get("fields", []) or []),  # 仍保留中文 fields，便于旧消费方读取
         separator=str(data.get("separator", " ")),
-        font=str(data.get("font", "")),
-        color=str(data.get("color", "")),
+        font_size=int(data.get("font_size", 0) or 0),
     )
 
 
@@ -253,8 +244,7 @@ def _corner_to_dict(corner: CornerConfig) -> dict[str, Any]:
         "chips": [_dc_to_dict(c) for c in corner.chips],
         "fields": list(corner.fields),
         "separator": corner.separator,
-        "font": corner.font,
-        "color": corner.color,
+        "font_size": corner.font_size,
     }
 
 

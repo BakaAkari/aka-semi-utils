@@ -30,6 +30,35 @@ def font_exists(name: str) -> bool:
     return (FONTS_DIR / name).is_file()
 
 
+def refresh_fonts() -> list[str]:
+    """重新扫描 fonts 目录，返回更新后的文件名列表。"""
+    return list_fonts()
+
+
+def import_font(source_path: Path) -> str | None:
+    """将外部字体文件复制到 config/fonts/。
+
+    Args:
+        source_path: 源字体文件路径（.ttf / .otf）。
+
+    Returns:
+        复制后的文件名；若校验失败或已存在则返回 ``None``。
+    """
+    if not source_path.is_file():
+        return None
+    suffix = source_path.suffix.lower()
+    if suffix not in (".ttf", ".otf"):
+        return None
+
+    target = FONTS_DIR / source_path.name
+    if target.exists():
+        return None
+
+    FONTS_DIR.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(source_path.read_bytes())
+    return target.name
+
+
 def resolve_font(name: str) -> Path:
     """
     解析字体路径。若指定字体不存在则回退到内置字体。

@@ -1,7 +1,7 @@
 {
   "version": 2,
   "output": {
-    "path": "{source_dir}/logo",
+    "path": "{source_dir}/output",
     "override": true
   },
   "corners": {

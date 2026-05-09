@@ -8,7 +8,8 @@
 
 2. **就地编辑 (in-place mutate)** —— Chip 行控件持有 :class:`FieldChip` 引用，
    用户操作直接 mutate 该 dataclass。父级 :class:`CornerSection` 持有 :class:`CornerConfig`
-   引用，对其 chips/separator/font/color 字段同样 mutate。
+   引用，对其 chips/separator/font_size 字段同样 mutate。
+   font 和 color 统一由全局参数决定，不在水印配置中覆盖。
 
 3. **不订阅自己的写** —— 控件改 state 后，通过 :meth:`AppState.set_corner_config`
    写回（触发 ``watermark_changed`` 用于 autosave + 预览刷新），但本面板**不订阅**
@@ -21,7 +22,7 @@
 代码组织
 ========
 
-- :class:`ChipDetailPopup`     —— ⚙ 弹窗：编辑 chip 级 color / font / custom_text
+- :class:`ChipDetailPopup`     —— ⚙ 弹窗：编辑 chip 级 custom_text
 - :class:`ChipRowWidget`       —— 单行：``[字段▼] [⚙] [◀] [▶] [×]``
 - :class:`CornerSection`       —— 单角 Accordion：标题行 + chip 列表 + 控制行
 - :class:`LogoTab`             —— Logo + 全局自定义文本
@@ -35,7 +36,7 @@ from dataclasses import replace
 from typing import ClassVar
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -43,7 +44,6 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QFontDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -82,7 +82,7 @@ CORNER_ORDER: list[str] = ["left_top", "right_top", "left_bottom", "right_bottom
 
 
 class ChipDetailPopup(QDialog):
-    """编辑单个 :class:`FieldChip` 的覆盖项（custom_text / color / font）。
+    """编辑单个 :class:`FieldChip` 的覆盖项（仅 custom_text）。
 
     使用模式：直接 mutate 传入的 chip 引用。点击"取消"则回滚为 popup 打开时的快照。
     """
@@ -92,11 +92,11 @@ class ChipDetailPopup(QDialog):
         self.chip = chip
 
         # 快照用于取消时回滚
-        self._snapshot = (chip.custom_text, chip.font, chip.color)
+        self._snapshot = chip.custom_text
 
         self.setWindowTitle("字段详情")
         self.setModal(True)
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(300)
         self._setup_ui()
 
     # ---- UI ----
@@ -112,34 +112,6 @@ class ChipDetailPopup(QDialog):
         self.custom_text_input.setEnabled(self.chip.field_id == "custom_text")
         form.addRow("自定义文本：", self.custom_text_input)
 
-        # 字段颜色（空 = 继承）
-        color_row = QHBoxLayout()
-        self.color_btn = QPushButton()
-        self.color_btn.setFixedHeight(28)
-        self.color_btn.setMinimumWidth(120)
-        self.color_btn.clicked.connect(self._pick_color)
-        clear_color_btn = QToolButton()
-        clear_color_btn.setText("继承")
-        clear_color_btn.setToolTip("清空此 chip 的颜色覆盖，继承角级颜色")
-        clear_color_btn.clicked.connect(self._clear_color)
-        color_row.addWidget(self.color_btn, 1)
-        color_row.addWidget(clear_color_btn)
-        self._refresh_color_btn()
-        form.addRow("字段颜色：", color_row)
-
-        # 字段字体（空 = 继承）
-        font_row = QHBoxLayout()
-        self.font_btn = QPushButton(self.chip.font or "（继承）")
-        self.font_btn.setFixedHeight(28)
-        self.font_btn.clicked.connect(self._pick_font)
-        clear_font_btn = QToolButton()
-        clear_font_btn.setText("继承")
-        clear_font_btn.setToolTip("清空此 chip 的字体覆盖，继承角级字体")
-        clear_font_btn.clicked.connect(self._clear_font)
-        font_row.addWidget(self.font_btn, 1)
-        font_row.addWidget(clear_font_btn)
-        form.addRow("字段字体：", font_row)
-
         # 按钮栏
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -147,42 +119,6 @@ class ChipDetailPopup(QDialog):
         button_box.accepted.connect(self._on_ok)
         button_box.rejected.connect(self._on_cancel)
         form.addRow(button_box)
-
-    # ---- 颜色 ----
-
-    def _pick_color(self) -> None:
-        initial = QColor(self.chip.color) if self.chip.color else QColor("#FFFFFF")
-        color = QColorDialog.getColor(initial, self, "选择字段颜色")
-        if color.isValid():
-            self.chip.color = color.name()
-            self._refresh_color_btn()
-
-    def _clear_color(self) -> None:
-        self.chip.color = ""
-        self._refresh_color_btn()
-
-    def _refresh_color_btn(self) -> None:
-        if self.chip.color:
-            self.color_btn.setText(self.chip.color)
-            self.color_btn.setStyleSheet(
-                f"QPushButton {{ background:{self.chip.color}; color: black; border: 1px solid #888; }}"
-            )
-        else:
-            self.color_btn.setText("（继承）")
-            self.color_btn.setStyleSheet("")
-
-    # ---- 字体 ----
-
-    def _pick_font(self) -> None:
-        initial = QFont(self.chip.font) if self.chip.font else QFont()
-        font, ok = QFontDialog.getFont(initial, self, "选择字段字体")
-        if ok:
-            self.chip.font = font.family()
-            self.font_btn.setText(self.chip.font)
-
-    def _clear_font(self) -> None:
-        self.chip.font = ""
-        self.font_btn.setText("（继承）")
 
     # ---- 提交 / 取消 ----
 
@@ -193,7 +129,7 @@ class ChipDetailPopup(QDialog):
 
     def _on_cancel(self) -> None:
         # 回滚快照
-        self.chip.custom_text, self.chip.font, self.chip.color = self._snapshot
+        self.chip.custom_text = self._snapshot
         self.reject()
 
 
@@ -253,7 +189,7 @@ class ChipRowWidget(QFrame):
         # ⚙ 详情
         self.detail_btn = QToolButton()
         self.detail_btn.setText("⚙")
-        self.detail_btn.setToolTip("编辑此字段的颜色 / 字体 / 自定义文本")
+        self.detail_btn.setToolTip("编辑此字段的自定义文本")
         self.detail_btn.setFixedWidth(28)
         self.detail_btn.clicked.connect(self._open_detail_popup)
         layout.addWidget(self.detail_btn)
@@ -300,7 +236,7 @@ class ChipRowWidget(QFrame):
 
     def _refresh_detail_indicator(self) -> None:
         """⚙ 上有覆盖项时高亮（蓝点 + 蓝色文字）。"""
-        has_override = bool(self.chip.color or self.chip.font) or (
+        has_override = (
             self.chip.field_id == "custom_text" and bool(self.chip.custom_text)
         )
         if has_override:
@@ -337,11 +273,13 @@ class CornerSection(QFrame):
     """单角配置的可折叠区块。
 
     包含：
-    - 标题栏（``▼ ↖ 左上 (3 字段)``）+ 角级色 / 字体（紧凑）
+    - 标题栏（``▼ ↖ 左上 (3 字段)``）+ 角级字号（紧凑）
     - 内容区（chip 列表 + ``+ 添加字段`` + ``分隔符: [_]``）
 
     持有 :class:`CornerConfig` 引用，所有用户操作直接 mutate；
     然后调用 ``state.set_corner_config(corner_attr, config)`` 触发 autosave / 预览刷新。
+
+    font 和 color 统一由全局参数决定，本区块仅控制字号覆盖。
     """
 
     MAX_CHIPS = 8
@@ -393,23 +331,18 @@ class CornerSection(QFrame):
         header.addWidget(self.summary_label)
         header.addStretch(1)
 
-        # 角级颜色
-        header.addWidget(QLabel("色"))
-        self.corner_color_btn = QPushButton()
-        self.corner_color_btn.setFixedSize(56, 24)
-        self.corner_color_btn.clicked.connect(self._pick_corner_color)
-        header.addWidget(self.corner_color_btn)
+        # 角级字号
+        header.addWidget(QLabel("字号"))
+        self.corner_size = QSpinBox()
+        self.corner_size.setRange(8, 128)
+        self.corner_size.setFixedWidth(50)
+        self.corner_size.valueChanged.connect(self._on_corner_size_changed)
+        header.addWidget(self.corner_size)
 
-        # 角级字体
-        self.corner_font_btn = QPushButton("字体")
-        self.corner_font_btn.setFixedHeight(24)
-        self.corner_font_btn.clicked.connect(self._pick_corner_font)
-        header.addWidget(self.corner_font_btn)
-
-        # 重置角级样式
+        # 重置角级字号
         reset_btn = QToolButton()
         reset_btn.setText("⤺")
-        reset_btn.setToolTip("重置角级颜色 / 字体（继承全局）")
+        reset_btn.setToolTip("重置角级字号（继承全局）")
         reset_btn.clicked.connect(self._reset_corner_style)
         header.addWidget(reset_btn)
 
@@ -487,9 +420,10 @@ class CornerSection(QFrame):
         self.sep_input.setText(self.corner.separator)
         self.sep_input.blockSignals(False)
 
-        # 角级色 / 字体
-        self._refresh_corner_color_btn()
-        self._refresh_corner_font_btn()
+        # 角级字号
+        self.corner_size.blockSignals(True)
+        self.corner_size.setValue(self.corner.font_size or 0)
+        self.corner_size.blockSignals(False)
         self._refresh_summary()
         self._refresh_add_btn()
 
@@ -569,45 +503,20 @@ class CornerSection(QFrame):
             self.corner.separator = new_sep
             self._push_to_state()
 
-    # ---- 角级色 / 字体 ----
+    # ---- 角级字号 ----
 
-    def _pick_corner_color(self) -> None:
-        initial = QColor(self.corner.color) if self.corner.color else QColor("#FFFFFF")
-        color = QColorDialog.getColor(initial, self, "选择角级颜色")
-        if color.isValid():
-            self.corner.color = color.name()
-            self._refresh_corner_color_btn()
-            self._push_to_state()
-
-    def _pick_corner_font(self) -> None:
-        initial = QFont(self.corner.font) if self.corner.font else QFont()
-        font, ok = QFontDialog.getFont(initial, self, "选择角级字体")
-        if ok:
-            self.corner.font = font.family()
-            self._refresh_corner_font_btn()
-            self._push_to_state()
-
-    def _reset_corner_style(self) -> None:
-        if not self.corner.color and not self.corner.font:
-            return
-        self.corner.color = ""
-        self.corner.font = ""
-        self._refresh_corner_color_btn()
-        self._refresh_corner_font_btn()
+    def _on_corner_size_changed(self, value: int) -> None:
+        self.corner.font_size = value if value > 0 else 0
         self._push_to_state()
 
-    def _refresh_corner_color_btn(self) -> None:
-        if self.corner.color:
-            self.corner_color_btn.setText(self.corner.color)
-            self.corner_color_btn.setStyleSheet(
-                f"QPushButton {{ background:{self.corner.color}; color: black; border: 1px solid #888; }}"
-            )
-        else:
-            self.corner_color_btn.setText("继承")
-            self.corner_color_btn.setStyleSheet("")
-
-    def _refresh_corner_font_btn(self) -> None:
-        self.corner_font_btn.setText(self.corner.font or "字体")
+    def _reset_corner_style(self) -> None:
+        if not self.corner.font_size:
+            return
+        self.corner.font_size = 0
+        self.corner_size.blockSignals(True)
+        self.corner_size.setValue(0)
+        self.corner_size.blockSignals(False)
+        self._push_to_state()
 
     # ---- 标题摘要 / 添加按钮可见性 ----
 

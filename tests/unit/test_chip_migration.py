@@ -96,34 +96,23 @@ class TestNewChipsDeserialize:
                 {
                     "field_id": "camera_model",
                     "custom_text": "",
-                    "font": "Roboto-Bold.ttf",
-                    "color": "#FF0000",
                 },
                 {
                     "field_id": "custom_text",
                     "custom_text": "拍于云南",
-                    "font": "",
-                    "color": "",
                 },
             ],
             "separator": " | ",
-            "font": "NotoSansCJKsc-Regular.otf",
-            "color": "#222222",
         }
         corner = _corner_from_dict(data)
         assert len(corner.chips) == 2
         c0 = corner.chips[0]
         assert c0.field_id == "camera_model"
-        assert c0.font == "Roboto-Bold.ttf"
-        assert c0.color == "#FF0000"
         c1 = corner.chips[1]
         assert c1.field_id == "custom_text"
         assert c1.custom_text == "拍于云南"
-        assert c1.font == ""  # 继承
-        assert c1.color == ""  # 继承
         assert corner.separator == " | "
-        assert corner.font == "NotoSansCJKsc-Regular.otf"
-        assert corner.color == "#222222"
+        assert corner.font_size == 0
 
     def test_chips_with_partial_attrs_use_defaults(self):
         """缺失字段应回退到默认值（空字符串等）。"""
@@ -133,8 +122,6 @@ class TestNewChipsDeserialize:
         c = corner.chips[0]
         assert c.field_id == "camera_model"
         assert c.custom_text == ""
-        assert c.font == ""
-        assert c.color == ""
 
     def test_chips_skips_non_dict_entries(self):
         data = {"chips": [{"field_id": "lens_model"}, "garbage", None, 42]}
@@ -188,19 +175,16 @@ class TestLegacyParamsExpansion:
         ids = [c.field_id for c in corner.chips]
         assert ids == ["focal_length", "aperture", "shutter", "iso"]
 
-    def test_params_chip_inherits_font_and_color(self):
+    def test_params_chip_with_custom_text_does_not_leak(self):
+        """params 拆分后子 chip 不携带原 custom_text。"""
         data = {"chips": [{
             "field_id": "params",
-            "font": "Roboto-Bold.ttf",
-            "color": "#FF00AA",
             "custom_text": "should-not-leak",
         }]}
         corner = _corner_from_dict(data)
         assert len(corner.chips) == 4
         for c in corner.chips:
-            assert c.font == "Roboto-Bold.ttf"
-            assert c.color == "#FF00AA"
-            assert c.custom_text == ""  # 拆分后子 chip 不携带原 custom_text
+            assert c.custom_text == ""
 
     def test_params_chip_mixed_with_other_chips(self):
         data = {"chips": [
@@ -229,8 +213,7 @@ class TestEdgeCases:
         assert corner.chips == []
         assert corner.fields == []
         assert corner.separator == " "
-        assert corner.font == ""
-        assert corner.color == ""
+        assert corner.font_size == 0
 
     def test_empty_dict_returns_default(self):
         corner = _corner_from_dict({})
@@ -251,10 +234,9 @@ class TestEdgeCases:
         corner = _corner_from_dict({"chips": [], "separator": " - "})
         assert corner.separator == " - "
 
-    def test_font_color_inherit_when_missing(self):
+    def test_font_size_inherit_when_missing(self):
         corner = _corner_from_dict({"chips": []})
-        assert corner.font == ""
-        assert corner.color == ""
+        assert corner.font_size == 0
 
 
 # ============================================================
@@ -284,13 +266,10 @@ class TestRoundTrip:
                 FieldChip(
                     field_id="custom_text",
                     custom_text="HELLO",
-                    font="Roboto-Bold.ttf",
-                    color="#FF0000",
                 ),
             ],
             separator=" | ",
-            font="NotoSansCJKsc-Bold.otf",
-            color="#000000",
+            font_size=24,
         )
         serialized = _corner_to_dict(original)
         restored = _corner_from_dict(serialized)
@@ -299,11 +278,8 @@ class TestRoundTrip:
         c = restored.chips[0]
         assert c.field_id == "custom_text"
         assert c.custom_text == "HELLO"
-        assert c.font == "Roboto-Bold.ttf"
-        assert c.color == "#FF0000"
         assert restored.separator == " | "
-        assert restored.font == "NotoSansCJKsc-Bold.otf"
-        assert restored.color == "#000000"
+        assert restored.font_size == 24
 
     def test_roundtrip_empty(self):
         original = CornerConfig()
@@ -312,19 +288,17 @@ class TestRoundTrip:
         assert restored.separator == " "
 
     def test_to_dict_shape(self):
-        """``_corner_to_dict`` 应总返回稳定的 5 个 key。"""
+        """``_corner_to_dict`` 应总返回稳定的 4 个 key。"""
         d = _corner_to_dict(CornerConfig())
-        assert set(d.keys()) == {"chips", "fields", "separator", "font", "color"}
+        assert set(d.keys()) == {"chips", "fields", "separator", "font_size"}
         assert d["chips"] == []
         assert d["fields"] == []
         assert d["separator"] == " "
-        assert d["font"] == ""
-        assert d["color"] == ""
+        assert d["font_size"] == 0
 
     def test_to_dict_chips_serialize_to_dicts(self):
-        corner = CornerConfig(chips=[FieldChip(field_id="make", color="#123456")])
+        corner = CornerConfig(chips=[FieldChip(field_id="make")])
         d = _corner_to_dict(corner)
         assert isinstance(d["chips"], list)
         assert isinstance(d["chips"][0], dict)
         assert d["chips"][0]["field_id"] == "make"
-        assert d["chips"][0]["color"] == "#123456"

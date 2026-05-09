@@ -9,69 +9,53 @@
       "chips": [
         {
           "field_id": "make",
-          "custom_text": "",
-          "font": "",
-          "color": ""
+          "custom_text": ""
         },
         {
           "field_id": "camera_model",
-          "custom_text": "",
-          "font": "",
-          "color": ""
+          "custom_text": ""
         }
       ],
       "fields": [
         "相机型号"
       ],
       "separator": " ",
-      "font": "",
-      "color": ""
+      "font_size": 0
     },
     "left_bottom": {
       "chips": [
         {
           "field_id": "focal_length",
-          "custom_text": "",
-          "font": "",
-          "color": ""
+          "custom_text": ""
         },
         {
           "field_id": "aperture",
-          "custom_text": "",
-          "font": "",
-          "color": ""
+          "custom_text": ""
         },
         {
           "field_id": "shutter",
-          "custom_text": "",
-          "font": "",
-          "color": ""
+          "custom_text": ""
         },
         {
           "field_id": "iso",
-          "custom_text": "",
-          "font": "",
-          "color": ""
+          "custom_text": ""
         }
       ],
       "fields": [],
       "separator": " ",
-      "font": "",
-      "color": ""
+      "font_size": 0
     },
     "right_top": {
       "chips": [],
       "fields": [],
       "separator": " ",
-      "font": "",
-      "color": ""
+      "font_size": 0
     },
     "right_bottom": {
       "chips": [],
       "fields": [],
       "separator": " ",
-      "font": "",
-      "color": ""
+      "font_size": 0
     }
   },
   "logo": {
@@ -87,19 +71,19 @@
     "corner_text_height_px": 0,
     "footer_height_px": 0,
     "logo_height_px": 0,
-    "left_margin": 30,
-    "right_margin": 30,
-    "top_margin": 30,
-    "bottom_margin": 30,
+    "left_margin": 0,
+    "right_margin": 0,
+    "top_margin": 0,
+    "bottom_margin": 0,
     "margin_color": "#FFFFFF",
-    "border_radius": 0,
-    "shadow_radius": 0,
+    "border_radius": 50,
+    "shadow_radius": 100,
     "shadow_color": "#000000",
     "quality": 95,
     "subsampling": 0,
     "blur_radius": 0,
     "ratio_enabled": false,
-    "ratio": "3:4",
+    "ratio": "9:16",
     "scale": 1.0,
     "trim_enabled": false,
     "trim_threshold": 0.0,
@@ -111,6 +95,6 @@
     "signature_position": "bottom_center",
     "signature_width_ratio": 0.2,
     "signature_offset_x": 0,
-    "signature_offset_y": -565
+    "signature_offset_y": -265
   }
 }

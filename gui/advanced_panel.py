@@ -177,14 +177,16 @@ class AdvancedPanel(QWidget):
 
     def _setup_font_group(self, group: CollapsibleGroup):
         """字体与颜色设置。"""
-        # 字体选择
+        # 字体选择 — Phase 27：统一为 FontSelector，实时预览 + 打开文件夹
         font_row = QHBoxLayout()
         font_row.addWidget(QLabel("字体："))
-        self.global_font = QComboBox()
-        from core.font_manager import list_fonts
-        self.global_font.addItems(list_fonts())
-        self.global_font.setFixedWidth(200)
-        self.global_font.currentTextChanged.connect(self._on_changed)
+        from gui.font_selector import FontSelector
+        self.global_font = FontSelector(
+            color="#FFFFFF",
+            show_open_folder=True,
+        )
+        self.global_font.set_inherit_visible(False)
+        self.global_font.font_changed.connect(self._on_changed)
         font_row.addWidget(self.global_font)
         font_row.addStretch()
         group.add_layout(font_row)
@@ -458,7 +460,7 @@ class AdvancedPanel(QWidget):
         self.quality_label.setText(str(self.quality_slider.value()))
 
         config = AdvancedConfig(
-            global_font=self.global_font.currentText(),
+            global_font=self.global_font.current_font(),
             global_color=self.global_color.text(),
             left_margin=self.left_margin_spin.value(),
             right_margin=self.right_margin_spin.value(),
@@ -484,12 +486,14 @@ class AdvancedPanel(QWidget):
         )
         # Phase 25：签名 7 字段已迁移至 SignatureTab，本面板不再持有；
         # 写回时用 replace 透传当前 state 中的签名字段，避免被 dataclass 默认值覆盖。
+        # Phase 26：signature_color → signature_invert_mono；任何过时字段引用都会
+        # 在 valueChanged / textChanged 信号槽里抛 AttributeError，PyQt6 ≥ 6.6 直接 abort。
         prev = self.state.advanced
         config = replace(
             config,
             signature_enabled=prev.signature_enabled,
             signature_path=prev.signature_path,
-            signature_color=prev.signature_color,
+            signature_invert_mono=prev.signature_invert_mono,
             signature_position=prev.signature_position,
             signature_width_ratio=prev.signature_width_ratio,
             signature_offset_x=prev.signature_offset_x,
@@ -509,9 +513,7 @@ class AdvancedPanel(QWidget):
             cfg = self.state.advanced
 
             # 全局字体与颜色
-            idx = self.global_font.findText(cfg.global_font)
-            if idx >= 0:
-                self.global_font.setCurrentIndex(idx)
+            self.global_font.set_font(cfg.global_font)
             self.global_color.setText(cfg.global_color)
             self.global_color_btn.setStyleSheet(f"background-color: {cfg.global_color}; border-radius: 4px; border: 1px solid #666666;")
 

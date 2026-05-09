@@ -51,7 +51,7 @@ def _user_json(project_root: Path) -> Path:
 
 def test_save_creates_file_with_all_sections(qapp, project_root):
     state = AppState()
-    state.left_top = CornerConfig(fields=["相机型号", "镜头型号"], separator=" | ", color="#FF0000")
+    state.left_top = CornerConfig(fields=["相机型号", "镜头型号"], separator=" | ")
     state.logo = LogoConfig(enabled="custom", position="left", color="#123456", custom_path="/tmp/x.png")
     state.custom_text = "测试文本"
     state.advanced = AdvancedConfig(global_font="Roboto-Bold.ttf", quality=88, blur_radius=12)
@@ -65,7 +65,6 @@ def test_save_creates_file_with_all_sections(qapp, project_root):
     assert "template" not in data
     assert data["output"] == {"path": "/tmp/out", "override": False}
     assert data["corners"]["left_top"]["fields"] == ["相机型号", "镜头型号"]
-    assert data["corners"]["left_top"]["color"] == "#FF0000"
     assert data["logo"]["custom_path"] == "/tmp/x.png"
     assert data["advanced"]["quality"] == 88
     assert data["advanced"]["blur_radius"] == 12
@@ -107,8 +106,8 @@ def test_load_full_roundtrip(qapp, project_root, tmp_path):
     real2.write_bytes(b"\xff\xd8\xff\xd9")
 
     src = AppState()
-    src.left_top = CornerConfig(fields=["A", "B"], separator="-", color="#AAA")
-    src.right_bottom = CornerConfig(fields=["X"], color="#BBB")
+    src.left_top = CornerConfig(fields=["A", "B"], separator="-")
+    src.right_bottom = CornerConfig(fields=["X"])
     src.logo = LogoConfig(enabled="disabled", color="#CCC")
     src.custom_text = "hello"
     src.advanced = AdvancedConfig(quality=70, ratio_enabled=True, ratio="16:9")
@@ -121,7 +120,6 @@ def test_load_full_roundtrip(qapp, project_root, tmp_path):
 
     assert dst.left_top.fields == ["A", "B"]
     assert dst.left_top.separator == "-"
-    assert dst.left_top.color == "#AAA"
     assert dst.right_bottom.fields == ["X"]
     assert dst.logo.enabled == "disabled"
     assert dst.custom_text == "hello"
