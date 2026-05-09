@@ -96,5 +96,5 @@ aka-semi-utils 基于 [Apache License 2.0](LICENSE) 发布。
 ## 关于
 
 - 项目地址：[BakaAkari/aka-semi-utils](https://github.com/BakaAkari/aka-semi-utils)
-- 当前版本：`2.1.7`
+- 当前版本：`2.1.8`
 - 主要形态：PyQt6 桌面 GUI + 批量图片水印处理管线

@@ -59,7 +59,7 @@
     }
   },
   "logo": {
-    "enabled": "custom",
+    "enabled": "auto",
     "position": "right",
     "color": "#D8D8D6",
     "custom_path": "/Users/baka_akari/Downloads/20260506-133218.jpeg"
@@ -76,8 +76,8 @@
     "top_margin": 0,
     "bottom_margin": 0,
     "margin_color": "#FFFFFF",
-    "border_radius": 50,
-    "shadow_radius": 100,
+    "border_radius": 80,
+    "shadow_radius": 20,
     "shadow_color": "#000000",
     "quality": 95,
     "subsampling": 0,
@@ -91,10 +91,12 @@
     "alignment_mode": "center",
     "signature_enabled": true,
     "signature_path": "/Users/baka_akari/Pictures/Akari.png",
+    "signature_enhancement": "soft_shadow",
+    "signature_enhancement_strength": 70,
     "signature_invert_mono": true,
-    "signature_position": "bottom_center",
-    "signature_width_ratio": 0.2,
-    "signature_offset_x": 0,
-    "signature_offset_y": -265
+    "signature_anchor": "bottom_center",
+    "signature_margin_x": 0,
+    "signature_margin_y": -950,
+    "signature_size_ratio": 0.2
   }
 }

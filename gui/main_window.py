@@ -115,9 +115,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("极简水印")
-        # Phase 13：默认高度统一 +50px，给缩略图 2 行 + 居中布局留更舒展的视觉空间
-        self.setMinimumSize(450, 600)
-        self.resize(500, 650)
+        # 默认高度略增，给新增后的签名设置页留出更舒展的纵向空间；
+        # 最小高度保持相对克制，避免小屏幕用户无法正常打开窗口。
+        self.setMinimumSize(450, 660)
+        self.resize(500, 740)
 
         # 项目根目录
         self.project_root = Path(__file__).parent.parent
@@ -315,7 +316,7 @@ class MainWindow(QMainWindow):
               支持 EXIF 信息水印、品牌 Logo、签名水印、实时预览、
               批量处理、错误汇总和三平台打包发布。
             </p>
-            <p><b>版本：</b>2.1.7</p>
+            <p><b>版本：</b>2.1.8</p>
             <p><b>项目：</b>github.com/BakaAkari/aka-semi-utils</p>
             <p><b>许可证：</b>Apache License 2.0</p>
             """.strip(),

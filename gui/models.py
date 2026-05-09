@@ -116,25 +116,24 @@ class AdvancedConfig:
     concat_direction: str = "vertical"  # horizontal / vertical
     alignment_mode: str = "center"      # top / center / bottom
 
-    # 签名（Phase 26：白底→透明、黑白二值切换、彩色像素保留原色）
+    # 签名（白底→透明、黑白二值切换、彩色像素保留原色）
     signature_enabled: bool = False
     signature_path: str = ""
-    # Phase 26：是否反相黑白笔画（False=黑色文字，True=白色文字）；
+    # 签名增强：none/soft_shadow/soft_glow/soft_outline。
+    signature_enhancement: str = "none"
+    # 签名增强强度：0~100，数值越大投影/发光/描边越明显。
+    signature_enhancement_strength: int = 50
+    # 是否反相黑白笔画（False=黑色文字，True=白色文字）；
     # 仅作用于近黑/近白的"无色"像素，彩色像素（如签名上的红点）始终原样保留。
     signature_invert_mono: bool = False
-    # 9 宫格之一：top_left/top_center/top_right/middle_left/middle_center/middle_right
-    #            /bottom_left/bottom_center/bottom_right
-    # Phase 23：默认 middle_center — 放大行为符合"以图像中心为锚"的视觉直觉
-    signature_position: str = "middle_center"
-    # Phase 22：尺寸 = 签名宽度占【原图区域宽度】的比例（0.01~1.0），分辨率无关；
-    # 高度按签名 PNG 原始宽高比等比；超出区域时由 filter 自动 fit。
-    signature_width_ratio: float = 0.15
-    # Phase 24：偏移（像素，带正负号；任意 position 下都生效）
-    #   offset_x: 正向 → 向右；负向 → 向左
-    #   offset_y: 正向 → 向下；负向 → 向上
-    # 计算顺序：① position 决定 base 坐标 → ② 加 (offset_x, offset_y)
-    signature_offset_x: int = 0
-    signature_offset_y: int = 0
+    # 9 宫格锚点：top_left/top_center/top_right/middle_left/middle_center/middle_right
+    #          /bottom_left/bottom_center/bottom_right。
+    signature_anchor: str = "middle_center"
+    # 偏移参数：签名中心相对 9 宫格参考点的有符号偏移；x 正向右，y 正向下。
+    signature_margin_x: int = 80
+    signature_margin_y: int = 60
+    # 尺寸 = 签名宽度占【照片主体短边】比例；高度按签名 PNG 原始宽高比等比。
+    signature_size_ratio: float = 0.20
 
 
 @dataclass

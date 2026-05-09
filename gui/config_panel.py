@@ -46,11 +46,14 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QSlider,
     QSpinBox,
     QTabWidget,
     QToolButton,
@@ -579,7 +582,7 @@ class CornerSection(QFrame):
 
 
 class LogoTab(QWidget):
-    """Logo + 全局自定义文本。
+    """Logo 设置。
 
     用 :class:`QFormLayout` 配合 ``WrapLongRows`` 策略，窄窗口下 label 不会被截断。
     """
@@ -638,12 +641,6 @@ class LogoTab(QWidget):
         path_row.addWidget(browse_btn)
         form.addRow("自定义路径：", path_row)
 
-        # 全局自定义文本
-        self.custom_text_input = QLineEdit()
-        self.custom_text_input.setPlaceholderText("可在 chip 类型为「自定义文本」时使用")
-        self.custom_text_input.editingFinished.connect(self._on_custom_text_changed)
-        form.addRow("全局自定义文本：", self.custom_text_input)
-
         outer.addLayout(form)
         outer.addStretch(1)
         guard_wheel_for_children(self)
@@ -660,7 +657,6 @@ class LogoTab(QWidget):
             self.position_combo.setCurrentIndex(idx if idx >= 0 else 0)
             self.path_input.setText(logo.custom_path)
             self._refresh_color_btn(logo.color)
-            self.custom_text_input.setText(self.state.custom_text)
         finally:
             self._loading = False
 
@@ -674,11 +670,6 @@ class LogoTab(QWidget):
             custom_path=self.path_input.text(),
         )
         self.state.set_logo_config(new_logo)
-
-    def _on_custom_text_changed(self) -> None:
-        if self._loading:
-            return
-        self.state.set_custom_text(self.custom_text_input.text())
 
     # ---- 颜色 ----
 
@@ -726,7 +717,7 @@ class SignatureTab(QWidget):
     设计要点
     --------
     - **写回策略**：用 :func:`dataclasses.replace` 局部更新 ``state.advanced`` 中的
-      签名 7 个字段（``signature_*``），不覆盖 :class:`AdvancedPanel` 持有的非签名
+      签名字段（``signature_*``），不覆盖 :class:`AdvancedPanel` 持有的非签名
       字段。``set_advanced_config`` 触发 ``advanced_changed`` 信号后，AdvancedPanel
       的 ``_load_state`` 会把所有非签名字段刷一遍——但因 ``_loading`` 守卫不会再回写。
     - **加载守卫**：与 LogoTab 一致的 ``self._loading`` 模式，避免 ``setValue`` /
@@ -734,7 +725,7 @@ class SignatureTab(QWidget):
     - **订阅**：自订阅 ``advanced_changed``，模板加载 / reset 后整个 Tab 重新刷值。
     """
 
-    # 9 宫格 position 内部 value（与 AdvancedPanel 旧实现保持一致）
+    # 9 宫格 anchor 内部 value。
     _POSITION_VALUES: ClassVar[list[str]] = [
         "top_left", "top_center", "top_right",
         "middle_left", "middle_center", "middle_right",
@@ -760,8 +751,20 @@ class SignatureTab(QWidget):
 
     def _setup_ui(self) -> None:
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(8, 8, 8, 8)
-        outer.setSpacing(8)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # 签名设置同样放入滚动区域，避免主窗口缩小时表单被纵向挤压。
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        content = QWidget()
+        content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setSpacing(8)
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -779,6 +782,7 @@ class SignatureTab(QWidget):
         path_row = QHBoxLayout()
         self.path_input = QLineEdit()
         self.path_input.setPlaceholderText("选择签名图片(PNG / JPG)...")
+        self.path_input.setMinimumWidth(0)
         self.path_input.textChanged.connect(self._on_changed)
         browse_btn = QPushButton("浏览...")
         browse_btn.clicked.connect(self._browse_signature)
@@ -788,6 +792,7 @@ class SignatureTab(QWidget):
 
         # Phase 26：反向签名色（黑↔白二值切换；彩色像素始终保留原色）
         self.invert_mono_combo = QComboBox()
+        self.invert_mono_combo.setMinimumWidth(0)
         self.invert_mono_combo.addItem("黑色文字（保留彩色像素）", False)
         self.invert_mono_combo.addItem("白色文字（保留彩色像素）", True)
         self.invert_mono_combo.setToolTip(
@@ -797,56 +802,114 @@ class SignatureTab(QWidget):
         self.invert_mono_combo.currentIndexChanged.connect(self._on_changed)
         form.addRow("反向签名色：", self.invert_mono_combo)
 
+        # 签名增强（基于抠像后的 alpha 蒙版）
+        enhancement_row = QHBoxLayout()
+        self.enhancement_combo = QComboBox()
+        self.enhancement_combo.setFixedWidth(128)
+        self.enhancement_combo.addItem("关闭", "none")
+        self.enhancement_combo.addItem("柔和投影", "soft_shadow")
+        self.enhancement_combo.addItem("轻微外发光", "soft_glow")
+        self.enhancement_combo.addItem("柔和描边", "soft_outline")
+        self.enhancement_combo.setToolTip(
+            "在透明签名下方增加低调视觉增强，避免签名与照片细节混杂："
+            "柔和投影更自然，外发光更干净，描边可读性最强。"
+        )
+        self.enhancement_combo.currentIndexChanged.connect(self._on_enhancement_changed)
+        enhancement_row.addWidget(self.enhancement_combo)
+        enhancement_row.addWidget(QLabel("强度："))
+        self.enhancement_strength_slider = QSlider(Qt.Orientation.Horizontal)
+        self.enhancement_strength_slider.setRange(0, 100)
+        self.enhancement_strength_slider.setSingleStep(5)
+        self.enhancement_strength_slider.setPageStep(10)
+        self.enhancement_strength_slider.setValue(50)
+        self.enhancement_strength_slider.setToolTip(
+            "控制签名增强效果强度：0% 为无增强，100% 为最大增强。"
+        )
+        self.enhancement_strength_slider.setMinimumWidth(0)
+        self.enhancement_strength_slider.valueChanged.connect(
+            self._on_enhancement_strength_changed
+        )
+        enhancement_row.addWidget(self.enhancement_strength_slider, 1)
+        self.enhancement_strength_label = QLabel("50%")
+        self.enhancement_strength_label.setMinimumWidth(36)
+        enhancement_row.addWidget(self.enhancement_strength_label)
+        form.addRow("签名增强：", enhancement_row)
+
         # 位置（9 宫格 ComboBox）
         self.position_combo = QComboBox()
+        self.position_combo.setMinimumWidth(0)
+        self.position_combo.setToolTip(
+            "位置决定照片主体区域内的九宫格参考点，不包含底部白色水印区；"
+            "水平/垂直偏移作用于签名中心，改大小时视觉中心不漂移。"
+        )
         for value, label in zip(
             self._POSITION_VALUES, self._POSITION_LABELS, strict=True
         ):
             self.position_combo.addItem(label, value)
-        self.position_combo.currentIndexChanged.connect(self._on_changed)
+        self.position_combo.currentIndexChanged.connect(self._on_anchor_changed)
         form.addRow("位置：", self.position_combo)
 
-        # 宽度占比（1%~100%，默认 15%）
-        self.width_ratio_spin = QSpinBox()
-        self.width_ratio_spin.setRange(1, 100)
-        self.width_ratio_spin.setSingleStep(1)
-        self.width_ratio_spin.setValue(15)
-        self.width_ratio_spin.setSuffix(" %")
-        self.width_ratio_spin.setToolTip(
-            "签名宽度占【原图区域宽度】的百分比（与图像分辨率无关，默认 15%）；"
-            "高度按签名 PNG 原始宽高比等比；超出图像区域时自动 fit。"
+        # 签名大小 + 偏移：同一行内用网格分栏，而不是单条不可换行的 HBox；
+        # 这样滚动页只需要竖向滚动，窄窗口不会出现横向溢出或内容被裁切。
+        size_offset_grid = QGridLayout()
+        size_offset_grid.setContentsMargins(0, 0, 0, 0)
+        size_offset_grid.setHorizontalSpacing(10)
+        size_offset_grid.setVerticalSpacing(6)
+        size_offset_grid.setColumnMinimumWidth(1, 96)
+        size_offset_grid.setColumnMinimumWidth(3, 108)
+        size_offset_grid.setColumnMinimumWidth(5, 108)
+        size_offset_grid.setColumnStretch(1, 1)
+        size_offset_grid.setColumnStretch(3, 1)
+        size_offset_grid.setColumnStretch(5, 1)
+        size_offset_grid.addWidget(QLabel("大小："), 0, 0)
+        self.size_ratio_spin = QSpinBox()
+        self.size_ratio_spin.setRange(1, 100)
+        self.size_ratio_spin.setSingleStep(1)
+        self.size_ratio_spin.setValue(20)
+        self.size_ratio_spin.setSuffix(" %")
+        self.size_ratio_spin.setMinimumWidth(96)
+        self.size_ratio_spin.setToolTip(
+            "签名宽度占【照片主体短边】的百分比；"
+            "高度按签名图片原始宽高比等比；超出照片主体区域时自动 fit。"
         )
-        self.width_ratio_spin.valueChanged.connect(self._on_changed)
-        form.addRow("宽度占比：", self.width_ratio_spin)
+        self.size_ratio_spin.valueChanged.connect(self._on_changed)
+        size_offset_grid.addWidget(self.size_ratio_spin, 0, 1)
 
-        # Phase 24：偏移（X/Y 像素，带正负号；任意 position 下都生效）
-        offset_row = QHBoxLayout()
-        offset_row.addWidget(QLabel("X："))
-        self.offset_x_spin = QSpinBox()
-        self.offset_x_spin.setRange(-9999, 9999)
-        self.offset_x_spin.setSuffix(" px")
-        self.offset_x_spin.setToolTip("水平偏移（正向 → 向右；负向 → 向左）。")
-        self.offset_x_spin.valueChanged.connect(self._on_changed)
-        offset_row.addWidget(self.offset_x_spin)
-        offset_row.addSpacing(16)
-        offset_row.addWidget(QLabel("Y："))
-        self.offset_y_spin = QSpinBox()
-        self.offset_y_spin.setRange(-9999, 9999)
-        self.offset_y_spin.setSuffix(" px")
-        self.offset_y_spin.setToolTip("垂直偏移（正向 → 向下；负向 → 向上）。")
-        self.offset_y_spin.valueChanged.connect(self._on_changed)
-        offset_row.addWidget(self.offset_y_spin)
-        offset_row.addStretch(1)
-        form.addRow("偏移：", offset_row)
+        # 偏移参数：签名中心相对九宫格参考点的有符号偏移。
+        self.margin_x_label = QLabel("X：")
+        self.margin_x_label.setToolTip("签名中心的水平偏移；正数向右，负数向左。")
+        size_offset_grid.addWidget(self.margin_x_label, 0, 2)
+        self.margin_x_spin = QSpinBox()
+        self.margin_x_spin.setRange(-9999, 9999)
+        self.margin_x_spin.setValue(80)
+        self.margin_x_spin.setSuffix(" px")
+        self.margin_x_spin.setMinimumWidth(108)
+        self.margin_x_spin.valueChanged.connect(self._on_changed)
+        size_offset_grid.addWidget(self.margin_x_spin, 0, 3)
+        self.margin_y_label = QLabel("Y：")
+        self.margin_y_label.setToolTip("签名中心的垂直偏移；正数向下，负数向上。")
+        size_offset_grid.addWidget(self.margin_y_label, 0, 4)
+        self.margin_y_spin = QSpinBox()
+        self.margin_y_spin.setRange(-9999, 9999)
+        self.margin_y_spin.setValue(60)
+        self.margin_y_spin.setSuffix(" px")
+        self.margin_y_spin.setMinimumWidth(108)
+        self.margin_y_spin.valueChanged.connect(self._on_changed)
+        size_offset_grid.addWidget(self.margin_y_spin, 0, 5)
+        form.addRow("", size_offset_grid)
 
-        outer.addLayout(form)
-        outer.addStretch(1)
-        guard_wheel_for_children(self)
+        content_layout.addLayout(form)
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+        content.adjustSize()
+        content.setMinimumWidth(0)
+        guard_wheel_for_children(content)
+        outer.addWidget(scroll)
 
     # ---- 加载 / 提交 ----
 
     def _load_state(self, *_args) -> None:
-        """从 AppState 加载签名相关 7 个字段（带 ``_loading`` 守卫）。"""
+        """从 AppState 加载签名字段（带 ``_loading`` 守卫）。"""
         self._loading = True
         try:
             cfg = self.state.advanced
@@ -854,18 +917,28 @@ class SignatureTab(QWidget):
             self.path_input.setText(cfg.signature_path)
             # Phase 26：bool → ComboBox index（False=0=黑色，True=1=白色）
             self.invert_mono_combo.setCurrentIndex(1 if cfg.signature_invert_mono else 0)
+            self._set_combo_by_data(
+                self.enhancement_combo,
+                cfg.signature_enhancement,
+                fallback="none",
+            )
+            self.enhancement_strength_slider.setValue(
+                max(0, min(100, cfg.signature_enhancement_strength))
+            )
+            self._refresh_enhancement_controls()
             try:
-                idx = self._POSITION_VALUES.index(cfg.signature_position)
+                idx = self._POSITION_VALUES.index(cfg.signature_anchor)
             except ValueError:
-                # 兜底：未知 position → 回到默认 middle_center（与 dataclass 一致）
+                # 兜底：未知 anchor → 回到默认 middle_center（与 dataclass 一致）
                 idx = self._POSITION_VALUES.index("middle_center")
             self.position_combo.setCurrentIndex(idx)
             # 内部 0.01~1.0 → UI 1~100 整数百分比
-            self.width_ratio_spin.setValue(
-                max(1, min(100, round(cfg.signature_width_ratio * 100)))
+            self.size_ratio_spin.setValue(
+                max(1, min(100, round(cfg.signature_size_ratio * 100)))
             )
-            self.offset_x_spin.setValue(cfg.signature_offset_x)
-            self.offset_y_spin.setValue(cfg.signature_offset_y)
+            self.margin_x_spin.setValue(cfg.signature_margin_x)
+            self.margin_y_spin.setValue(cfg.signature_margin_y)
+            self._refresh_distance_labels()
         finally:
             self._loading = False
 
@@ -878,16 +951,61 @@ class SignatureTab(QWidget):
             signature_enabled=self.enabled_check.isChecked(),
             signature_path=self.path_input.text(),
             signature_invert_mono=bool(self.invert_mono_combo.currentData()),
-            signature_position=(
+            signature_enhancement=str(self.enhancement_combo.currentData() or "none"),
+            signature_enhancement_strength=self.enhancement_strength_slider.value(),
+            signature_anchor=(
                 self.position_combo.currentData() or "middle_center"
             ),
-            signature_width_ratio=self.width_ratio_spin.value() / 100.0,
-            signature_offset_x=self.offset_x_spin.value(),
-            signature_offset_y=self.offset_y_spin.value(),
+            signature_size_ratio=self.size_ratio_spin.value() / 100.0,
+            signature_margin_x=self.margin_x_spin.value(),
+            signature_margin_y=self.margin_y_spin.value(),
         )
         self.state.set_advanced_config(new_cfg)
 
+    def _on_anchor_changed(self, *_args) -> None:
+        self._refresh_distance_labels()
+        self._on_changed()
+
+    def _on_enhancement_changed(self, *_args) -> None:
+        self._refresh_enhancement_controls()
+        self._on_changed()
+
+    def _on_enhancement_strength_changed(self, value: int) -> None:
+        self.enhancement_strength_label.setText(f"{value}%")
+        self._on_changed()
+
+    def _refresh_enhancement_controls(self) -> None:
+        value = self.enhancement_strength_slider.value()
+        self.enhancement_strength_label.setText(f"{value}%")
+        enabled = (self.enhancement_combo.currentData() or "none") != "none"
+        self.enhancement_strength_slider.setEnabled(enabled)
+        self.enhancement_strength_label.setEnabled(enabled)
+
+    def _refresh_distance_labels(self) -> None:
+        """刷新偏移控件文案。
+
+        签名定位统一采用「九宫格参考点 + 签名中心偏移」语义，
+        因此两个方向都允许正负值，不再按边缘锚点切换为距边距离。
+        """
+        self.margin_x_spin.setMinimum(-9999)
+        self.margin_y_spin.setMinimum(-9999)
+        self.margin_x_label.setText("X：")
+        self.margin_y_label.setText("Y：")
+        self.margin_x_spin.setToolTip(
+            "签名中心相对九宫格参考点的水平偏移；正数向右，负数向左。"
+        )
+        self.margin_y_spin.setToolTip(
+            "签名中心相对九宫格参考点的垂直偏移；正数向下，负数向上。"
+        )
+
     # ---- 辅助 ----
+
+    @staticmethod
+    def _set_combo_by_data(combo: QComboBox, value: str, *, fallback: str) -> None:
+        idx = combo.findData(value)
+        if idx < 0:
+            idx = combo.findData(fallback)
+        combo.setCurrentIndex(max(0, idx))
 
     def _browse_signature(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

@@ -484,20 +484,20 @@ class AdvancedPanel(QWidget):
             footer_height_px=self.footer_height_px.value(),
             logo_height_px=self.logo_height_px.value(),
         )
-        # Phase 25：签名 7 字段已迁移至 SignatureTab，本面板不再持有；
-        # 写回时用 replace 透传当前 state 中的签名字段，避免被 dataclass 默认值覆盖。
-        # Phase 26：signature_color → signature_invert_mono；任何过时字段引用都会
-        # 在 valueChanged / textChanged 信号槽里抛 AttributeError，PyQt6 ≥ 6.6 直接 abort。
+        # 签名字段由 SignatureTab 持有；写回时透传当前 state 中的签名字段，
+        # 避免高级面板刷新非签名字段时把签名配置重置为 dataclass 默认值。
         prev = self.state.advanced
         config = replace(
             config,
             signature_enabled=prev.signature_enabled,
             signature_path=prev.signature_path,
             signature_invert_mono=prev.signature_invert_mono,
-            signature_position=prev.signature_position,
-            signature_width_ratio=prev.signature_width_ratio,
-            signature_offset_x=prev.signature_offset_x,
-            signature_offset_y=prev.signature_offset_y,
+            signature_enhancement=prev.signature_enhancement,
+            signature_enhancement_strength=prev.signature_enhancement_strength,
+            signature_anchor=prev.signature_anchor,
+            signature_margin_x=prev.signature_margin_x,
+            signature_margin_y=prev.signature_margin_y,
+            signature_size_ratio=prev.signature_size_ratio,
         )
         self.state.set_advanced_config(config)
 

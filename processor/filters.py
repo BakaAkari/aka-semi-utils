@@ -266,11 +266,11 @@ class WatermarkFilter(FilterProcessor):
     - :meth:`_collect_params`         — 从 ctx 收集所有参数为局部 dict
     - :meth:`_render_corner_texts`    — 渲染四角文本（含自适应缩放）
     - :meth:`_load_logos`             — 加载左/中/右三个 logo（容错）
-    - :meth:`_paste_main_and_left`    — 主图 + 左 logo
+    - :meth:`_paste_main_and_left`    — 主图 + 左 logo + 左分隔线
     - :meth:`_paste_center_logo`      — 中央 logo（含按高度 resize）
     - :meth:`_compute_text_layout`    — 计算四角文本坐标
     - :meth:`_paste_texts`            — 粘贴四角文本
-    - :meth:`_paste_right_logo`       — 右 logo + 分隔线
+    - :meth:`_paste_right_logo`       — 右 logo + 右分隔线
     """
 
     def process(self, ctx: PipelineContext):
@@ -288,9 +288,9 @@ class WatermarkFilter(FilterProcessor):
         footer_start_y = params["top_margin"] + img.height
 
         left_logo_width = self._paste_main_and_left(
-            canvas, img, logos["left_logo"], params, footer_start_y
+            canvas, img, logos["left_logo"], params, footer_start_y, common_spacing
         )
-        self._paste_center_logo(canvas, logos["center_logo"], ctx, footer_start_y)
+        self._paste_center_logo(canvas, logos["center_logo"], params, footer_start_y)
 
         layout = self._compute_text_layout(
             corners=corners,
@@ -306,12 +306,9 @@ class WatermarkFilter(FilterProcessor):
             self._paste_right_logo(
                 canvas=canvas,
                 right_logo=logos["right_logo"],
-                corners=corners,
                 params=params,
-                canvas_width=canvas_width,
+                layout=layout,
                 footer_start_y=footer_start_y,
-                elem_margin=layout["elem_margin"],
-                elem_height=layout["elem_height"],
                 common_spacing=common_spacing,
             )
 
@@ -328,6 +325,7 @@ class WatermarkFilter(FilterProcessor):
             "color": ctx.get("color", "white"),
             "delimiter_color": ctx.get("delimiter_color", "black"),
             "delimiter_width": ctx.getint("delimiter_width", int(img.width * 0.003)),
+            "logo_height": ctx.getint("logo_height", ctx.getint("center_logo_height", 0)),
             "left_margin": ctx.getint("left_margin", 0),
             "right_margin": ctx.getint("right_margin", 0),
             "top_margin": ctx.getint("top_margin", 0),
@@ -403,12 +401,12 @@ class WatermarkFilter(FilterProcessor):
         left_logo: Image.Image | None,
         params: dict,
         footer_start_y: int,
+        common_spacing: int,
     ) -> int:
-        """粘贴主图 + 左 logo（按 footer 高度等比缩放，不压扁），返回实际渲染宽度。
+        """粘贴主图 + 左 logo + 左分隔线，返回左侧占用宽度。
 
-        Phase 14（方案 C）：左 logo 改为按高度等比缩放，宽度由原图比例决定，
-        不再强制压成正方形。返回值 left_logo_width 喂给 _compute_text_layout，
-        让左侧文本起始 X 坐标自动避开可变宽度的 logo。
+        Logo 高度统一使用 ``logo_height``；未配置时退回到底部水印条完整高度，
+        保持旧左侧 logo 的默认视觉大小。左/右分隔线均固定在 logo 右侧。
         """
         canvas.paste(
             img,
@@ -417,43 +415,36 @@ class WatermarkFilter(FilterProcessor):
         )
         if not left_logo:
             return 0
-        logo_height = canvas.height - footer_start_y
-        if left_logo.height > 0:
-            scale = logo_height / left_logo.height
-            target_w = max(1, round(left_logo.width * scale))
-        else:
-            target_w = logo_height
-        left_logo = left_logo.resize((target_w, logo_height), Image.Resampling.LANCZOS)
+
+        left_logo = self._resize_logo_to_target_height(left_logo, canvas, params, footer_start_y)
+        logo_x = params["left_margin"]
+        logo_y = self._logo_y(canvas, left_logo.height, footer_start_y)
         canvas.paste(
             left_logo,
-            (params["left_margin"], footer_start_y),
+            (logo_x, logo_y),
             mask=left_logo if left_logo.mode == "RGBA" else None,
         )
-        return left_logo.width
+
+        delimiter = self._make_logo_delimiter(params, left_logo.height)
+        delimiter_x = logo_x + left_logo.width + common_spacing
+        delimiter_y = self._delimiter_y(logo_y, left_logo.height)
+        canvas.paste(delimiter, (delimiter_x, delimiter_y), mask=delimiter)
+        return left_logo.width + common_spacing + delimiter.width
 
     def _paste_center_logo(
         self,
         canvas: Image.Image,
         center_logo: Image.Image | None,
-        ctx: PipelineContext,
+        params: dict,
         footer_start_y: int,
     ) -> None:
-        """粘贴中央 logo（先用 ResizeFilter 按高度等比缩放再居中粘贴）。"""
+        """粘贴中央 logo（统一按 logo_height / footer 高度等比缩放）。"""
         if not center_logo:
             return
-        center_logo_height = ctx.getint("center_logo_height")
-        logo_height = center_logo_height if center_logo_height else canvas.height - footer_start_y
-
-        resize_ctx = PipelineContext({"buffer": [center_logo], "height": logo_height})
-        resize_processor = get_processor("resize")
-        if resize_processor:
-            resize_processor().process(resize_ctx)
-            center_logo = resize_ctx.get_buffer()[0]
-        else:
-            logger.warning("ResizeFilter not found in registry, skipping logo resize")
+        center_logo = self._resize_logo_to_target_height(center_logo, canvas, params, footer_start_y)
 
         center_x = (canvas.width - center_logo.width) // 2
-        center_y = footer_start_y + ((canvas.height - footer_start_y) - center_logo.height) // 2
+        center_y = self._logo_y(canvas, center_logo.height, footer_start_y)
         canvas.paste(
             center_logo,
             (center_x, center_y),
@@ -524,51 +515,66 @@ class WatermarkFilter(FilterProcessor):
         self,
         canvas: Image.Image,
         right_logo: Image.Image,
-        corners: dict,
         params: dict,
-        canvas_width: int,
+        layout: dict,
         footer_start_y: int,
-        elem_margin: int,
-        elem_height: int,
         common_spacing: int,
     ) -> None:
-        """粘贴右 logo + 与文本之间的分隔线。
+        """粘贴右 logo + 右分隔线。
 
-        Phase 14（方案 C）：右 logo 按高度等比缩放（高度 = ``elem_height``），
-        宽度由原图比例决定；右 logo X 坐标根据**实际渲染宽度**反推，让横长 logo
-        也能完整显示。分隔线高度仍以 elem_height 为基准（与文本块高度匹配）。
+        右侧对齐恢复旧模式：右侧文字保持靠右，logo + 分隔线整体贴在右侧文字左边；
+        分隔线仍固定在 logo 右侧，因此视觉顺序为：logo → 分隔线 → 右侧文字。
         """
-        logo_height = elem_height
-        delimiter = Image.new(
-            "RGBA",
-            (params["delimiter_width"], int(logo_height * 1.1)),
-            params["delimiter_color"],
-        )
-        rt, rb = corners["right_top"], corners["right_bottom"]
-        delimiter_x = (
-            canvas_width
-            - params["right_margin"]
-            - max(rt.width, rb.width)
-            - 2 * common_spacing
-            - delimiter.width
-        )
-        delimiter_y = int(footer_start_y + elem_margin - logo_height * 0.05)
+        right_logo = self._resize_logo_to_target_height(right_logo, canvas, params, footer_start_y)
+        delimiter = self._make_logo_delimiter(params, right_logo.height)
+        text_left_x = min(layout["rt_x"], layout["rb_x"])
+        delimiter_x = text_left_x - common_spacing - delimiter.width
+        delimiter_y = self._delimiter_y(self._logo_y(canvas, right_logo.height, footer_start_y), right_logo.height)
         canvas.paste(delimiter, (delimiter_x, delimiter_y), mask=delimiter)
 
-        # 等比缩放：宽度 = round(orig_w * target_h / orig_h)
-        if right_logo.height > 0:
-            scale = logo_height / right_logo.height
-            target_w = max(1, round(right_logo.width * scale))
-        else:
-            target_w = logo_height
-        right_logo = right_logo.resize((target_w, logo_height), Image.Resampling.LANCZOS)
         right_logo_x = delimiter_x - common_spacing - right_logo.width
-        right_logo_y = footer_start_y + elem_margin
+        right_logo_y = self._logo_y(canvas, right_logo.height, footer_start_y)
         canvas.paste(
             right_logo,
             (right_logo_x, right_logo_y),
             mask=right_logo if right_logo.mode == "RGBA" else None,
         )
+
+    @staticmethod
+    def _target_logo_height(params: dict, _footer_start_y: int) -> int:
+        """统一 logo 高度：显式 logo_height 优先；0 则退回旧左侧 logo 的 footer 高度。"""
+        return max(1, params["logo_height"] or params["bottom_margin"] or 1)
+
+    def _resize_logo_to_target_height(
+        self,
+        logo: Image.Image,
+        _canvas: Image.Image,
+        params: dict,
+        footer_start_y: int,
+    ) -> Image.Image:
+        """按统一目标高度等比缩放 logo。"""
+        logo_height = self._target_logo_height(params, footer_start_y)
+        target_w = max(1, round(logo.width * logo_height / logo.height)) if logo.height > 0 else logo_height
+        return logo.resize((target_w, logo_height), Image.Resampling.LANCZOS)
+
+    @staticmethod
+    def _logo_y(canvas: Image.Image, logo_height: int, footer_start_y: int) -> int:
+        """让 logo 在底部水印条内垂直居中。"""
+        return footer_start_y + ((canvas.height - footer_start_y) - logo_height) // 2
+
+    @staticmethod
+    def _make_logo_delimiter(params: dict, logo_height: int) -> Image.Image:
+        """创建高度为 logo 渲染高度 80% 的分隔线。"""
+        return Image.new(
+            "RGBA",
+            (params["delimiter_width"], int(logo_height * 0.8)),
+            params["delimiter_color"],
+        )
+
+    @staticmethod
+    def _delimiter_y(logo_y: int, logo_height: int) -> int:
+        """分隔线相对 logo 垂直居中。"""
+        return int(logo_y + logo_height * 0.1)
 
 
 @register("watermark_with_timestamp")
@@ -754,27 +760,26 @@ class SignatureFilter(FilterProcessor):
     - **粘贴区域**：原图区域 = 画布去掉 watermark margins 后的内层矩形：
       ``[top_margin, canvas.height - bottom_margin) × [left_margin, canvas.width - right_margin)``。
       若 watermark 未启用，所有 margins 都是 0 → 区域 = 整张画布。
-    - **9 宫格位置**：``{top|middle|bottom}_{left|center|right}``，共 9 种锚点。
-    - **偏移**（Phase 24 — 行业标准 anchor + offset 双轴）：
-      ``signature_offset_x`` 与 ``signature_offset_y`` 为带正负号的像素值，
-      在【任意 position 锚点下都生效】（与旧版"四向只两向有效"行为相反）。
-      语义：``offset_x`` 正向 → 向右 / 负向 → 向左；
-            ``offset_y`` 正向 → 向下 / 负向 → 向上。
-      计算顺序：① position 决定 base 坐标 → ② 加上 (offset_x, offset_y) 全局位移向量。
-    - **尺寸策略**（Phase 22 — 分辨率无关）：``target_w = area_w * signature_width_ratio``，
-      高度按签名 PNG 原始宽高比等比推算 ``target_h = target_w * sig_img.height / sig_img.width``。
-      ``signature_width_ratio`` 范围 0.01~1.0（默认 0.15），直接表示"签名宽占图宽的比例"，
-      与图像分辨率解耦 — 同一比例在 1080×720 与 6000×4000 上视觉占比一致。
-      若高度超出区域，按 area_h 等比 fit。
+    - **9 宫格锚点**：``{top|middle|bottom}_{left|center|right}``，共 9 种锚点。
+    - **定位策略**：9 宫格锚点先确定照片主体区域内的参考点；
+      ``signature_margin_x`` / ``signature_margin_y`` 表示签名中心相对该参考点的有符号偏移。
+    - **尺寸策略**：``target_w = min(area_w, area_h) * signature_size_ratio``，
+      以照片主体短边为统一基准，降低 9:16 / 16:9 / 1:1 间的视觉尺寸漂移。
+      高度按签名 PNG 原始宽高比等比推算；若高度超出区域，按 area_h 等比 fit。
+    - **增强策略**：可选 ``none`` / ``soft_shadow`` / ``soft_glow`` / ``soft_outline``，
+      基于抠像后的 alpha 蒙版生成柔和投影、外发光或描边。
     - **接入位置**：在 ``watermark`` 之后；若签名文件缺失，记 warning 并直通。
     """
 
-    # 宽度占图比例（target_w = area_w × ratio）
-    DEFAULT_WIDTH_RATIO = 0.15
-    MIN_WIDTH_RATIO = 0.01
-    MAX_WIDTH_RATIO = 1.0
-    # 9 宫格位置常量
-    _VALID_POSITIONS = frozenset({
+    # 签名宽度占照片主体短边比例（target_w = min(area_w, area_h) × ratio）
+    DEFAULT_SIZE_RATIO = 0.20
+    MIN_SIZE_RATIO = 0.01
+    MAX_SIZE_RATIO = 1.0
+    # 9 宫格锚点常量
+    _VALID_ENHANCEMENTS = frozenset({
+        "none", "soft_shadow", "soft_glow", "soft_outline",
+    })
+    _VALID_ANCHORS = frozenset({
         "top_left", "top_center", "top_right",
         "middle_left", "middle_center", "middle_right",
         "bottom_left", "bottom_center", "bottom_right",
@@ -825,14 +830,14 @@ class SignatureFilter(FilterProcessor):
             ctx.success()
             return
 
-        # Phase 22：宽度占图比例 — target_w = area_w × ratio；高度按 PNG 原宽高比
+        # 宽度占照片主体短边比例 — target_w = min(area_w, area_h) × ratio。
         try:
-            user_ratio = float(ctx.get("signature_width_ratio", self.DEFAULT_WIDTH_RATIO))
+            user_ratio = float(ctx.get("signature_size_ratio", self.DEFAULT_SIZE_RATIO))
         except (TypeError, ValueError):
-            user_ratio = self.DEFAULT_WIDTH_RATIO
-        user_ratio = max(self.MIN_WIDTH_RATIO, min(self.MAX_WIDTH_RATIO, user_ratio))
+            user_ratio = self.DEFAULT_SIZE_RATIO
+        user_ratio = max(self.MIN_SIZE_RATIO, min(self.MAX_SIZE_RATIO, user_ratio))
 
-        target_w = max(1, int(area_w * user_ratio))
+        target_w = max(1, int(min(area_w, area_h) * user_ratio))
         # 按 PNG 原始宽高比等比推算高度（防御 sig_img.width=0）
         if sig_img.width > 0:
             target_h = max(1, int(target_w * sig_img.height / sig_img.width))
@@ -848,30 +853,41 @@ class SignatureFilter(FilterProcessor):
         # Phase 26：白→透明 / 黑↔白二值切换 / 彩色像素保留原色
         invert_mono = bool(ctx.get("signature_invert_mono", False))
         tinted = self._apply_color_swap(sig_resized, invert_mono=invert_mono)
+        enhancement = str(ctx.get("signature_enhancement", "none")).lower()
+        if enhancement not in self._VALID_ENHANCEMENTS:
+            logger.warning(f"[SignatureFilter] 未知签名增强模式 {enhancement!r}，回退 none。")
+            enhancement = "none"
+        strength = self._normalize_enhancement_strength(
+            ctx.get("signature_enhancement_strength", 50)
+        )
+        enhanced = self._apply_enhancement(
+            tinted,
+            mode=enhancement,
+            invert_mono=invert_mono,
+            strength=strength,
+        )
 
-        # Phase 23：默认 middle_center — 放大锚点 = 图像中心
-        position = str(ctx.get("signature_position", "middle_center")).lower()
-        if position not in self._VALID_POSITIONS:
-            logger.warning(f"[SignatureFilter] 未知位置 {position!r}，回退 middle_center。")
-            position = "middle_center"
+        anchor = str(ctx.get("signature_anchor", "middle_center")).lower()
+        if anchor not in self._VALID_ANCHORS:
+            logger.warning(f"[SignatureFilter] 未知签名锚点 {anchor!r}，回退 middle_center。")
+            anchor = "middle_center"
 
-        # Phase 24：offset_x/y 带正负号，任意 position 下都生效（统一为全局位移向量）
-        offset_x = ctx.getint("signature_offset_x", 0)
-        offset_y = ctx.getint("signature_offset_y", 0)
+        margin_x = ctx.getint("signature_margin_x", 0)
+        margin_y = ctx.getint("signature_margin_y", 0)
 
         paste_x, paste_y = self._compute_paste_xy(
-            position=position,
+            anchor=anchor,
             area_left=area_left, area_top=area_top,
             area_right=area_right, area_bottom=area_bottom,
             target_w=target_w, target_h=target_h,
-            offset_x=offset_x, offset_y=offset_y,
+            margin_x=margin_x, margin_y=margin_y,
         )
 
         # 边界保护：把 paste 框 clamp 进区域
         paste_x = max(area_left, min(paste_x, area_right - target_w))
         paste_y = max(area_top, min(paste_y, area_bottom - target_h))
 
-        canvas.paste(tinted, (paste_x, paste_y), mask=tinted)
+        canvas.alpha_composite(enhanced, (paste_x, paste_y))
         ctx.update_buffer([canvas]).save_buffer(self.name()).success()
 
     def name(self) -> str:
@@ -880,37 +896,96 @@ class SignatureFilter(FilterProcessor):
     @staticmethod
     def _compute_paste_xy(
         *,
-        position: str,
+        anchor: str,
         area_left: int, area_top: int,
         area_right: int, area_bottom: int,
         target_w: int, target_h: int,
-        offset_x: int, offset_y: int,
+        margin_x: int, margin_y: int,
     ) -> tuple[int, int]:
-        """根据 9 宫格位置 + (offset_x, offset_y) 计算签名左上角粘贴坐标（绝对画布坐标）。
+        """根据 9 宫格参考点与中心偏移计算签名左上角粘贴坐标。
 
-        Phase 24：先按 position 算 base 坐标，再加全局位移向量 (offset_x, offset_y)。
-            offset_x：正向 → 向右；负向 → 向左
-            offset_y：正向 → 向下；负向 → 向上
-        所有 9 个 position 锚点下，offset_x/y 都生效（语义统一）。
+        ``margin_x/y`` 表示签名中心相对 9 宫格参考点的有符号偏移；
+        x 正向右，y 正向下。尺寸变化时中心点保持稳定。
         """
-        # 垂直 base
-        v, _, h = position.partition("_")
-        if v == "top":
-            base_y = area_top
-        elif v == "bottom":
-            base_y = area_bottom - target_h
-        else:  # middle
-            base_y = area_top + (area_bottom - area_top - target_h) // 2
+        area_w = area_right - area_left
+        area_h = area_bottom - area_top
+        vertical, _, horizontal = anchor.partition("_")
 
-        # 水平 base
-        if h == "left":
-            base_x = area_left
-        elif h == "right":
-            base_x = area_right - target_w
+        if horizontal == "left":
+            anchor_x = area_left
+        elif horizontal == "right":
+            anchor_x = area_right
         else:  # center
-            base_x = area_left + (area_right - area_left - target_w) // 2
+            anchor_x = area_left + area_w // 2
 
-        return base_x + offset_x, base_y + offset_y
+        if vertical == "top":
+            anchor_y = area_top
+        elif vertical == "bottom":
+            anchor_y = area_bottom
+        else:  # middle
+            anchor_y = area_top + area_h // 2
+
+        center_x = anchor_x + margin_x
+        center_y = anchor_y + margin_y
+        paste_x = center_x - target_w // 2
+        paste_y = center_y - target_h // 2
+
+        return paste_x, paste_y
+
+    @staticmethod
+    def _normalize_enhancement_strength(value: object) -> float:
+        """把 0~100 的 UI 强度值归一化为 0.0~1.0。"""
+        try:
+            strength = float(value)
+        except (TypeError, ValueError):
+            strength = 50.0
+        return max(0.0, min(100.0, strength)) / 100.0
+
+    @staticmethod
+    def _apply_enhancement(
+        img: Image.Image,
+        *,
+        mode: str,
+        invert_mono: bool,
+        strength: float = 0.5,
+    ) -> Image.Image:
+        """基于签名 alpha 蒙版生成增强层，并返回同尺寸合成结果。"""
+        # UI 仍然保持 0~100% 的用户语义，但把 100% 对应的实际增强强度翻倍，
+        # 方便用户在滑到最右侧时获得更明显的投影 / 外发光 / 描边效果。
+        strength = max(0.0, min(1.0, strength)) * 2.0
+        if mode == "none" or strength <= 0:
+            return img
+
+        alpha = img.getchannel("A")
+        if mode == "soft_shadow":
+            effect = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            # 不扩展画布，保持现有正向偏移模型；通过更大的 blur 半径扩大投影面积，
+            # 并让边缘更柔和，避免新增尺寸变化影响签名定位。
+            shadow = alpha.filter(ImageFilter.GaussianBlur(radius=24))
+            shadow = shadow.point(lambda p: int(p * 0.70 * strength))
+            effect.putalpha(shadow)
+            layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            layer.alpha_composite(effect, (4, 4))
+        elif mode == "soft_glow":
+            glow_rgb = (0, 0, 0) if invert_mono else (255, 255, 255)
+            glow = alpha.filter(ImageFilter.GaussianBlur(radius=5))
+            glow = glow.point(lambda p: int(p * 0.64 * strength))
+            layer = Image.new("RGBA", img.size, (*glow_rgb, 0))
+            layer.putalpha(glow)
+        elif mode == "soft_outline":
+            outline_rgb = (0, 0, 0) if invert_mono else (255, 255, 255)
+            outline = alpha.filter(ImageFilter.MaxFilter(size=5))
+            outline = outline.filter(ImageFilter.GaussianBlur(radius=1.2))
+            outline = outline.point(lambda p: int(p * 1.10 * strength))
+            layer = Image.new("RGBA", img.size, (*outline_rgb, 0))
+            layer.putalpha(outline)
+        else:
+            return img
+
+        out = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        out.alpha_composite(layer)
+        out.alpha_composite(img)
+        return out
 
     # ── Phase 26：颜色处理阈值 ──
     # 近白判定：R/G/B 均 ≥ WHITE_THRESHOLD 且 |max-min| ≤ CHROMA_TOL → 视为纸张

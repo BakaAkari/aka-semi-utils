@@ -106,9 +106,11 @@
     "signature_enabled": false,
     "signature_path": "",
     "signature_invert_mono": false,
-    "signature_position": "middle_center",
-    "signature_width_ratio": 0.15,
-    "signature_offset_x": 0,
-    "signature_offset_y": 0
+    "signature_enhancement": "none",
+    "signature_enhancement_strength": 50,
+    "signature_anchor": "middle_center",
+    "signature_margin_x": 80,
+    "signature_margin_y": 60,
+    "signature_size_ratio": 0.2
   }
 }

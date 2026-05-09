@@ -65,19 +65,18 @@ PROCESSOR_MAP: dict[str, dict[str, Any]] = {
         "target": "watermark",
         "processor_name": "watermark",
     },
-    # Phase 17/22/24/26：签名 — 串接在 watermark 之后，仅当 signature_enabled 时生成
-    # Phase 26：signature_color → signature_invert_mono；
-    # Phase 22：signature_height_ratio → signature_width_ratio；
-    # Phase 24：新增 signature_offset_x / signature_offset_y。
+    # 签名 — 串接在 watermark 之后，仅当 signature_enabled 时生成。
     "signature": {
         "fields": [
             "signature_enabled",
             "signature_path",
             "signature_invert_mono",
-            "signature_position",
-            "signature_width_ratio",
-            "signature_offset_x",
-            "signature_offset_y",
+            "signature_enhancement",
+            "signature_enhancement_strength",
+            "signature_anchor",
+            "signature_margin_x",
+            "signature_margin_y",
+            "signature_size_ratio",
         ],
         "target": "signature",
         "processor_name": "signature",
@@ -292,7 +291,7 @@ def _build_watermark_config(state: AppState) -> dict[str, Any]:
     if state.advanced.footer_height_px > 0:
         config["bottom_margin"] = state.advanced.footer_height_px
     if state.advanced.logo_height_px > 0:
-        config["center_logo_height"] = state.advanced.logo_height_px
+        config["logo_height"] = state.advanced.logo_height_px
 
     return config
 
@@ -315,12 +314,13 @@ def _build_signature_config(state: AppState) -> dict[str, Any]:
     return {
         "signature_enabled": True,
         "signature_path": cfg.signature_path,
-        # Phase 26：黑↔白笔画切换；彩色像素永远保留原色（详见 SignatureFilter）
+        # 黑↔白笔画切换；彩色像素永远保留原色（详见 SignatureFilter）
         "signature_invert_mono": cfg.signature_invert_mono,
-        "signature_position": cfg.signature_position,
-        # Phase 22：尺寸 = 签名宽度占图宽比例（0.01~1.0），分辨率无关
-        "signature_width_ratio": cfg.signature_width_ratio,
-        # Phase 24：偏移（带正负号；任意 position 下都生效）
-        "signature_offset_x": cfg.signature_offset_x,
-        "signature_offset_y": cfg.signature_offset_y,
+        "signature_enhancement": cfg.signature_enhancement,
+        "signature_enhancement_strength": cfg.signature_enhancement_strength,
+        "signature_anchor": cfg.signature_anchor,
+        "signature_margin_x": cfg.signature_margin_x,
+        "signature_margin_y": cfg.signature_margin_y,
+        # 尺寸 = 签名宽度占照片主体短边比例（0.01~1.0）
+        "signature_size_ratio": cfg.signature_size_ratio,
     }

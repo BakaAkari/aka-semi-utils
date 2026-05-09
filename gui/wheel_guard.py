@@ -3,7 +3,7 @@
 配置面板放在 :class:`QScrollArea` 中时，`QSpinBox` / `QComboBox` / `QSlider`
 等控件默认会吃掉鼠标滚轮并改变值，导致用户想滚动设置页时误改配置。
 
-本模块提供统一事件过滤器：配置控件不再响应滚轮；如果它位于滚动区域内，滚轮事件会转发给最近的滚动区域 viewport，让页面继续滚动。
+本模块提供统一事件过滤器：配置控件不再响应滚轮，避免 PyQt6 在事件过滤器里同步转发同一个事件导致递归崩溃。
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from __future__ import annotations
 from PyQt6.QtCore import QEvent, QObject, Qt
 from PyQt6.QtWidgets import (
     QAbstractScrollArea,
-    QApplication,
     QComboBox,
     QDoubleSpinBox,
     QSlider,
@@ -29,13 +28,10 @@ class _WheelGuardFilter(QObject):
         if event.type() != QEvent.Type.Wheel:
             return False
 
-        if isinstance(watched, QWidget):
-            scroll_area = _nearest_scroll_area(watched)
-            if scroll_area is not None:
-                event.ignore()
-                QApplication.sendEvent(scroll_area.viewport(), event)
-
-        # 无论是否找到滚动区域，都不让 SpinBox/ComboBox/Slider 自己处理滚轮。
+        # 不在这里调用 QApplication.sendEvent 转发同一个 Wheel 事件。
+        # PyQt6 在 macOS 下可能因 eventFilter 递归进入 QApplication.notify 而 abort。
+        # 直接忽略并拦截即可；滚动页本身在鼠标位于非值控件区域时仍正常滚动。
+        event.ignore()
         return True
 
 

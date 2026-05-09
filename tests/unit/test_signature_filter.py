@@ -1,13 +1,13 @@
-"""SignatureFilter 单元测试（Phase 18 引入；Phase 22 重构为宽度占比模型；
+"""SignatureFilter 单元测试（Phase 18 引入；签名尺寸现按主体短边比例计算；
 Phase 26 重构为「保留彩色像素 + 黑白二值切换」算法）。
 
 覆盖：
 
 - 直通分支：``signature_enabled=False`` / 缺 path / 文件不存在 / 区域非正
 - ``_apply_color_swap`` 三分类（近白→透明 / 近黑↔白可切换 / 彩色保留原色）
-- ``_compute_paste_xy`` 9 宫格 × 四向 offset 的所有粘贴坐标
+- ``_compute_paste_xy`` 9 宫格参考点 × 签名中心偏移的所有粘贴坐标
 - 实际渲染：粘贴位置落在【原图区域】内（margins 不为 0 时验证扣边）
-- Phase 22 尺寸模型：``target_w = area_w × signature_width_ratio``
+- 尺寸模型：``target_w = min(area_w, area_h) × signature_size_ratio``
 - ``_build_signature_config`` 对 GUI AppState 的转换契约（含 signature_invert_mono）
 - Phase 26 红点回归：彩色装饰像素在 invert_mono 切换下 RGB 不被改变
 """
@@ -97,6 +97,12 @@ def _find_color_bbox(img: Image.Image, *, r_hi=False, g_hi=False, b_hi=False):
 def _find_black_bbox(img: Image.Image):
     """找出图中所有 alpha>0 且 RGB 接近黑色的像素 bbox。"""
     return _find_color_bbox(img, r_hi=False, g_hi=False, b_hi=False)
+
+
+def _bbox_center(bbox: tuple[int, int, int, int]) -> tuple[float, float]:
+    """返回 bbox 的视觉中心点坐标。"""
+    xmin, xmax, ymin, ymax = bbox
+    return (xmin + xmax) / 2, (ymin + ymax) / 2
 
 
 # ---- 跳过分支 ----------------------------------------------------------------
@@ -309,135 +315,107 @@ class TestColorSwap:
 
 
 class TestComputePasteXY:
-    """Phase 24：直接验证 9 宫格 base 坐标 + (offset_x, offset_y) 全局位移向量。
+    """直接验证 9 宫格参考点 + 签名中心偏移的粘贴坐标。
 
     语义：
-        offset_x：正向 → 向右；负向 → 向左
-        offset_y：正向 → 向下；负向 → 向上
-    任意 9 个 position 锚点下，offset_x/y 都生效。
+        九宫格锚点先在照片主体区域内确定参考点；
+        margin_x/y 表示签名中心相对该参考点的有符号偏移。
+        本函数只反推左上角，不做边界 clamp。
     """
 
     AREA: ClassVar[dict] = dict(area_left=0, area_top=0, area_right=400, area_bottom=300)
     SIZE: ClassVar[dict] = dict(target_w=80, target_h=20)
-    NO_OFF: ClassVar[dict] = dict(offset_x=0, offset_y=0)
+    NO_MARGIN: ClassVar[dict] = dict(margin_x=0, margin_y=0)
 
-    def _call(self, position: str, **overrides):
-        kw = {**self.AREA, **self.SIZE, **self.NO_OFF, **overrides}
-        return SignatureFilter._compute_paste_xy(position=position, **kw)
+    def _call(self, anchor: str, **overrides):
+        kw = {**self.AREA, **self.SIZE, **self.NO_MARGIN, **overrides}
+        return SignatureFilter._compute_paste_xy(anchor=anchor, **kw)
 
-    # ---- 9 宫格基础位置（无 offset）----
-    def test_top_left_no_offset(self):
-        assert self._call("top_left") == (0, 0)
+    # ---- 9 宫格参考点（偏移为 0；返回的是按签名尺寸反推的左上角）----
+    def test_top_left_no_margin(self):
+        assert self._call("top_left") == (-40, -10)
 
-    def test_top_center_no_offset(self):
-        x, y = self._call("top_center")
-        assert x == (400 - 80) // 2
-        assert y == 0
+    def test_top_center_no_margin(self):
+        assert self._call("top_center") == (160, -10)
 
-    def test_top_right_no_offset(self):
-        assert self._call("top_right") == (400 - 80, 0)
+    def test_top_right_no_margin(self):
+        assert self._call("top_right") == (360, -10)
 
-    def test_middle_left_no_offset(self):
-        x, y = self._call("middle_left")
-        assert x == 0
-        assert y == (300 - 20) // 2
+    def test_middle_left_no_margin(self):
+        assert self._call("middle_left") == (-40, 140)
 
-    def test_middle_center_no_offset(self):
-        x, y = self._call("middle_center")
-        assert x == (400 - 80) // 2
-        assert y == (300 - 20) // 2
+    def test_middle_center_no_margin(self):
+        assert self._call("middle_center") == (160, 140)
 
-    def test_middle_right_no_offset(self):
-        x, y = self._call("middle_right")
-        assert x == 400 - 80
-        assert y == (300 - 20) // 2
+    def test_middle_right_no_margin(self):
+        assert self._call("middle_right") == (360, 140)
 
-    def test_bottom_left_no_offset(self):
-        assert self._call("bottom_left") == (0, 300 - 20)
+    def test_bottom_left_no_margin(self):
+        assert self._call("bottom_left") == (-40, 290)
 
-    def test_bottom_center_no_offset(self):
-        x, y = self._call("bottom_center")
-        assert x == (400 - 80) // 2
-        assert y == 300 - 20
+    def test_bottom_center_no_margin(self):
+        assert self._call("bottom_center") == (160, 290)
 
-    def test_bottom_right_no_offset(self):
-        assert self._call("bottom_right") == (400 - 80, 300 - 20)
+    def test_bottom_right_no_margin(self):
+        assert self._call("bottom_right") == (360, 290)
 
-    # ---- offset_x/y 在每个 position 都按 (base + offset) 叠加 ----
-    def test_top_left_with_positive_offsets(self):
-        # base=(0,0)，向右下推
-        x, y = self._call("top_left", offset_x=25, offset_y=15)
-        assert (x, y) == (25, 15)
+    # ---- 偏移始终作用于签名中心，边缘锚点也允许负值 ----
+    def test_top_left_offset_moves_center_from_reference_point(self):
+        x, y = self._call("top_left", margin_x=100, margin_y=80)
+        assert (x, y) == (100 - 40, 80 - 10)
 
-    def test_bottom_right_with_negative_offsets(self):
-        # base=(320,280)，向左上推
-        x, y = self._call("bottom_right", offset_x=-20, offset_y=-10)
-        assert (x, y) == (400 - 80 - 20, 300 - 20 - 10)
+    def test_bottom_right_offset_moves_center_from_reference_point(self):
+        x, y = self._call("bottom_right", margin_x=-100, margin_y=-80)
+        assert (x, y) == (400 - 100 - 40, 300 - 80 - 10)
 
-    def test_middle_center_with_positive_offsets(self):
-        # base=(160,140)；offset 在 middle_center 也生效（与旧版 Phase 18 行为相反）
-        x, y = self._call("middle_center", offset_x=30, offset_y=40)
-        assert x == (400 - 80) // 2 + 30
-        assert y == (300 - 20) // 2 + 40
+    def test_negative_top_left_offset_is_not_clamped_here(self):
+        x, y = self._call("top_left", margin_x=-25, margin_y=-15)
+        assert (x, y) == (-25 - 40, -15 - 10)
 
-    def test_middle_center_with_negative_offsets(self):
-        # 中心锚点 + 负偏移 → 向左上偏移
-        x, y = self._call("middle_center", offset_x=-30, offset_y=-40)
-        assert x == (400 - 80) // 2 - 30
-        assert y == (300 - 20) // 2 - 40
+    def test_middle_center_with_positive_adjustment(self):
+        x, y = self._call("middle_center", margin_x=30, margin_y=40)
+        assert x == 200 + 30 - 40
+        assert y == 150 + 40 - 10
 
-    def test_top_right_with_mixed_offsets(self):
-        # base=(320,0)；向左推 8、向下推 5
-        x, y = self._call("top_right", offset_x=-8, offset_y=5)
-        assert (x, y) == (400 - 80 - 8, 5)
+    def test_middle_center_with_negative_adjustment(self):
+        x, y = self._call("middle_center", margin_x=-30, margin_y=-40)
+        assert x == 200 - 30 - 40
+        assert y == 150 - 40 - 10
 
-    def test_bottom_left_with_mixed_offsets(self):
-        # base=(0,280)；向右推 7、向上推 12
-        x, y = self._call("bottom_left", offset_x=7, offset_y=-12)
-        assert (x, y) == (7, 300 - 20 - 12)
+    def test_top_center_offset_moves_signature_center_on_both_axes(self):
+        x, y = self._call("top_center", margin_x=-18, margin_y=60)
+        assert x == 200 - 18 - 40
+        assert y == 0 + 60 - 10
 
-    def test_offsets_apply_uniformly_to_all_positions(self):
-        """对所有 9 个锚点，加同一个 (offset_x, offset_y) 应整体平移同样距离。"""
-        all_positions = [
-            "top_left", "top_center", "top_right",
-            "middle_left", "middle_center", "middle_right",
-            "bottom_left", "bottom_center", "bottom_right",
-        ]
-        dx, dy = 17, -23
-        for pos in all_positions:
-            base_x, base_y = self._call(pos)
-            shifted_x, shifted_y = self._call(pos, offset_x=dx, offset_y=dy)
-            assert shifted_x == base_x + dx, f"{pos}: x 平移失败"
-            assert shifted_y == base_y + dy, f"{pos}: y 平移失败"
+    def test_middle_right_offset_moves_signature_center_on_both_axes(self):
+        x, y = self._call("middle_right", margin_x=-90, margin_y=-13)
+        assert x == 400 - 90 - 40
+        assert y == 150 - 13 - 10
 
-    def test_zero_offsets_match_no_offset(self):
-        # offset_x=0, offset_y=0 应等价于不传 offset
-        for pos in ["top_left", "middle_center", "bottom_right"]:
-            assert self._call(pos) == self._call(pos, offset_x=0, offset_y=0)
-
-    # ---- 区域偏移（margins 把区域推离原点）----
+    # ---- 区域偏移（margins 把照片主体区域推离原点）----
     def test_area_offset_applied(self):
         kw = {
             "area_left": 50, "area_top": 30,
             "area_right": 350, "area_bottom": 250,
-            **self.SIZE, **self.NO_OFF,
+            **self.SIZE, **self.NO_MARGIN,
         }
-        x, y = SignatureFilter._compute_paste_xy(position="top_left", **kw)
-        assert (x, y) == (50, 30)
-        x, y = SignatureFilter._compute_paste_xy(position="bottom_right", **kw)
-        assert x == 350 - 80
-        assert y == 250 - 20
+        x, y = SignatureFilter._compute_paste_xy(anchor="top_left", **kw)
+        assert (x, y) == (50 - 40, 30 - 10)
+        x, y = SignatureFilter._compute_paste_xy(anchor="bottom_right", **kw)
+        assert x == 350 - 40
+        assert y == 250 - 10
 
-    def test_area_offset_with_offset_xy(self):
-        """area 偏移 + offset_x/y 同时叠加（base 由 area 决定，偏移再叠加）。"""
+    def test_area_offset_with_center_offsets(self):
         kw = {
             "area_left": 50, "area_top": 30,
             "area_right": 350, "area_bottom": 250,
             **self.SIZE,
-            "offset_x": 10, "offset_y": -5,
+            "margin_x": 10, "margin_y": 5,
         }
-        x, y = SignatureFilter._compute_paste_xy(position="top_left", **kw)
-        assert (x, y) == (60, 25)
+        x, y = SignatureFilter._compute_paste_xy(anchor="top_left", **kw)
+        assert (x, y) == (50 + 10 - 40, 30 + 5 - 10)
+        x, y = SignatureFilter._compute_paste_xy(anchor="bottom_right", **kw)
+        assert (x, y) == (350 + 10 - 40, 250 + 5 - 10)
 
 
 # ---- 实际渲染：位置落在原图区域内 -------------------------------------------
@@ -456,12 +434,12 @@ class TestSignatureRendering:
     def _render(
         self,
         tmp_path,
-        position: str,
+        anchor: str,
         *,
         canvas_size=(400, 300),
-        width_ratio: float = 0.05,
+        size_ratio: float = 0.05,
         margins=None,
-        offsets=None,
+        distance=None,
     ):
         canvas = _make_canvas(*canvas_size)
         sig_path = _make_full_opaque_signature_png(tmp_path, w=self.SIG_W, h=self.SIG_H)
@@ -469,13 +447,13 @@ class TestSignatureRendering:
             "signature_enabled": True,
             "signature_path": sig_path,
             "signature_invert_mono": False,
-            "signature_position": position,
-            "signature_width_ratio": width_ratio,
+            "signature_anchor": anchor,
+            "signature_size_ratio": size_ratio,
         }
         if margins:
             extras.update(margins)
-        if offsets:
-            extras.update(offsets)
+        if distance:
+            extras.update(distance)
         ctx = _ctx([canvas], **extras)
         SignatureFilter().process(ctx)
         return ctx.get_buffer()[0]
@@ -523,23 +501,21 @@ class TestSignatureRendering:
         assert abs(cx - out.width / 2) < out.width * 0.05
         assert abs(cy - out.height / 2) < out.height * 0.05
 
-    def test_unknown_position_falls_back_to_middle_center(self, tmp_path):
-        """Phase 23：未知 position 回退到 middle_center（图像中心对齐）。"""
+    def test_unknown_anchor_falls_back_to_middle_center(self, tmp_path):
+        """未知 anchor 回退到 middle_center（图像中心对齐）。"""
         out = self._render(tmp_path, "garbage_value")
         bbox = _find_black_bbox(out)
         assert bbox is not None
         xmin, xmax, ymin, ymax = bbox
         cx = (xmin + xmax) / 2
         cy = (ymin + ymax) / 2
-        # 中心点应在画布中心 ±10% 容差内
         assert abs(cx - out.width / 2) < out.width * 0.1
         assert abs(cy - out.height / 2) < out.height * 0.1
 
     # 验证：图像内定位避开 watermark margins
-    def test_position_respects_margins(self, tmp_path):
+    def test_anchor_respects_margins(self, tmp_path):
         """有 bottom_margin 时，bottom_right 签名应粘贴在【原图区域底部】，
         而非画布底部（不应进入 margin 条带）。"""
-        # canvas 400x300，bottom_margin=60 → 原图区域 y ∈ [0, 240)
         out = self._render(
             tmp_path,
             "bottom_right",
@@ -548,10 +524,9 @@ class TestSignatureRendering:
         bbox = _find_black_bbox(out)
         assert bbox is not None
         _, _, _, ymax = bbox
-        # ymax 应严格小于 area_bottom = 300 - 60 = 240
         assert ymax < 240
 
-    def test_position_respects_top_margin(self, tmp_path):
+    def test_anchor_respects_top_margin(self, tmp_path):
         """top_left 签名应在 top_margin 之下。"""
         out = self._render(
             tmp_path,
@@ -563,7 +538,7 @@ class TestSignatureRendering:
         _, _, ymin, _ = bbox
         assert ymin >= 50
 
-    def test_position_respects_left_margin(self, tmp_path):
+    def test_anchor_respects_left_margin(self, tmp_path):
         """top_left 签名应在 left_margin 之右。"""
         out = self._render(
             tmp_path,
@@ -575,90 +550,197 @@ class TestSignatureRendering:
         xmin, _, _, _ = bbox
         assert xmin >= 40
 
-    # ---- Phase 24：offset_x/y 带正负号微调（任意 position 下都生效）----
-    def test_offset_y_positive_pushes_down(self, tmp_path):
-        """top_left + offset_y=20 → 签名上沿距画布顶 20px（向下推）。"""
+    # ---- 中心偏移语义：偏移始终作用于签名中心 ----
+    def test_top_left_offset_sets_center_when_not_clamped(self, tmp_path):
         out = self._render(
             tmp_path,
             "top_left",
-            offsets={"signature_offset_x": 0, "signature_offset_y": 20},
+            distance={"signature_margin_x": 80, "signature_margin_y": 60},
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
-        _, _, ymin, _ = bbox
-        assert ymin == 20
+        cx, cy = _bbox_center(bbox)
+        assert abs(cx - 80) <= 1
+        assert abs(cy - 60) <= 1
 
-    def test_offset_x_positive_pushes_right(self, tmp_path):
-        """top_left + offset_x=30 → 签名左沿距画布左 30px（向右推）。"""
-        out = self._render(
-            tmp_path,
-            "top_left",
-            offsets={"signature_offset_x": 30, "signature_offset_y": 0},
-        )
-        bbox = _find_black_bbox(out)
-        assert bbox is not None
-        xmin, _, _, _ = bbox
-        assert xmin == 30
-
-    def test_offset_y_negative_pushes_up(self, tmp_path):
-        """bottom_right + offset_y=-15 → 签名下沿距画布底 15px（向上推）。"""
+    def test_bottom_right_offset_sets_center_when_not_clamped(self, tmp_path):
         out = self._render(
             tmp_path,
             "bottom_right",
-            offsets={"signature_offset_x": 0, "signature_offset_y": -15},
+            distance={"signature_margin_x": -80, "signature_margin_y": -60},
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
-        _, _, _, ymax = bbox
-        # canvas h=300, base_y = 300 - target_h；offset_y=-15 → ymax = 300 - 1 - 15
-        assert ymax == 300 - 1 - 15
+        cx, cy = _bbox_center(bbox)
+        assert abs(cx - (400 - 80)) <= 1
+        assert abs(cy - (300 - 60)) <= 1
 
-    def test_offset_x_negative_pushes_left(self, tmp_path):
-        """bottom_right + offset_x=-25 → 签名右沿距画布右 25px（向左推）。"""
+    def test_edge_reference_without_inward_offset_is_clamped_into_area(self, tmp_path):
         out = self._render(
             tmp_path,
             "bottom_right",
-            offsets={"signature_offset_x": -25, "signature_offset_y": 0},
+            distance={"signature_margin_x": 0, "signature_margin_y": 0},
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
-        _, xmax, _, _ = bbox
-        assert xmax == 400 - 1 - 25
+        _, xmax, _, ymax = bbox
+        assert xmax == 400 - 1
+        assert ymax == 300 - 1
 
-    def test_offset_xy_works_at_middle_center(self, tmp_path):
-        """Phase 24 关键修复：middle_center 锚点下 offset_x/y 也生效。"""
-        out_no_off = self._render(tmp_path, "middle_center")
-        bbox_no = _find_black_bbox(out_no_off)
+    def test_middle_center_offset_is_signed_center_adjustment(self, tmp_path):
+        out_no_adjust = self._render(tmp_path, "middle_center")
+        bbox_no = _find_black_bbox(out_no_adjust)
         assert bbox_no is not None
-        x_center_no = (bbox_no[0] + bbox_no[1]) / 2
-        y_center_no = (bbox_no[2] + bbox_no[3]) / 2
+        x_center_no, y_center_no = _bbox_center(bbox_no)
 
-        out_with_off = self._render(
+        out_with_adjust = self._render(
             tmp_path,
             "middle_center",
-            offsets={"signature_offset_x": 40, "signature_offset_y": -30},
+            distance={"signature_margin_x": 40, "signature_margin_y": -30},
         )
-        bbox_with = _find_black_bbox(out_with_off)
+        bbox_with = _find_black_bbox(out_with_adjust)
         assert bbox_with is not None
-        x_center_with = (bbox_with[0] + bbox_with[1]) / 2
-        y_center_with = (bbox_with[2] + bbox_with[3]) / 2
+        x_center_with, y_center_with = _bbox_center(bbox_with)
 
-        # 中心向右推 40、向上推 30
         assert abs((x_center_with - x_center_no) - 40) <= 1
         assert abs((y_center_with - y_center_no) - (-30)) <= 1
 
-    def test_offset_xy_combined_diagonal_shift(self, tmp_path):
-        """top_left + (offset_x=20, offset_y=10) → 同时右移 20、下移 10。"""
+    def test_top_center_offset_moves_center_on_both_axes(self, tmp_path):
         out = self._render(
             tmp_path,
-            "top_left",
-            offsets={"signature_offset_x": 20, "signature_offset_y": 10},
+            "top_center",
+            distance={"signature_margin_x": -20, "signature_margin_y": 40},
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
-        xmin, _, ymin, _ = bbox
-        assert xmin == 20
-        assert ymin == 10
+        x_center, y_center = _bbox_center(bbox)
+        assert abs(x_center - (400 / 2 - 20)) <= 1
+        assert abs(y_center - 40) <= 1
+
+    def test_visual_center_stays_fixed_when_size_changes_from_middle_center(self, tmp_path):
+        expected_center = (400 / 2 + 45, 300 / 2 - 35)
+        centers = []
+        for ratio in (0.05, 0.20):
+            out = self._render(
+                tmp_path,
+                "middle_center",
+                size_ratio=ratio,
+                distance={"signature_margin_x": 45, "signature_margin_y": -35},
+            )
+            bbox = _find_black_bbox(out)
+            assert bbox is not None
+            centers.append(_bbox_center(bbox))
+
+        for cx, cy in centers:
+            assert abs(cx - expected_center[0]) <= 1
+            assert abs(cy - expected_center[1]) <= 1
+        assert abs(centers[0][0] - centers[1][0]) <= 1
+        assert abs(centers[0][1] - centers[1][1]) <= 1
+
+    def test_visual_center_stays_fixed_when_size_changes_from_top_left(self, tmp_path):
+        expected_center = (120, 90)
+        centers = []
+        for ratio in (0.05, 0.20):
+            out = self._render(
+                tmp_path,
+                "top_left",
+                size_ratio=ratio,
+                distance={"signature_margin_x": 120, "signature_margin_y": 90},
+            )
+            bbox = _find_black_bbox(out)
+            assert bbox is not None
+            centers.append(_bbox_center(bbox))
+
+        for cx, cy in centers:
+            assert abs(cx - expected_center[0]) <= 1
+            assert abs(cy - expected_center[1]) <= 1
+        assert abs(centers[0][0] - centers[1][0]) <= 1
+        assert abs(centers[0][1] - centers[1][1]) <= 1
+
+
+# ---- 签名增强：投影 / 外发光 / 描边 -----------------------------------------
+
+
+class TestSignatureEnhancement:
+    """验证签名增强模式基于透明签名 alpha 蒙版生成额外可见像素。"""
+
+    def test_none_returns_same_image_object(self):
+        img = Image.new("RGBA", (40, 20), (0, 0, 0, 0))
+        img.putpixel((20, 10), (0, 0, 0, 255))
+        assert SignatureFilter._apply_enhancement(
+            img,
+            mode="none",
+            invert_mono=False,
+            strength=1.0,
+        ) is img
+
+    @pytest.mark.parametrize("mode", ["soft_shadow", "soft_glow", "soft_outline"])
+    def test_enhancement_adds_pixels_around_signature(self, mode):
+        img = Image.new("RGBA", (80, 40), (0, 0, 0, 0))
+        for x in range(30, 50):
+            for y in range(15, 25):
+                img.putpixel((x, y), (0, 0, 0, 255))
+
+        out = SignatureFilter._apply_enhancement(
+            img,
+            mode=mode,
+            invert_mono=False,
+            strength=0.5,
+        )
+        assert out.size == img.size
+        original_alpha = np.asarray(img.getchannel("A"))
+        enhanced_alpha = np.asarray(out.getchannel("A"))
+        assert np.count_nonzero(enhanced_alpha) > np.count_nonzero(original_alpha)
+
+    @pytest.mark.parametrize("mode", ["soft_shadow", "soft_glow", "soft_outline"])
+    def test_enhancement_strength_controls_effect_alpha(self, mode):
+        img = Image.new("RGBA", (80, 40), (0, 0, 0, 0))
+        for x in range(30, 50):
+            for y in range(15, 25):
+                img.putpixel((x, y), (0, 0, 0, 255))
+
+        low = SignatureFilter._apply_enhancement(
+            img,
+            mode=mode,
+            invert_mono=False,
+            strength=0.25,
+        )
+        high = SignatureFilter._apply_enhancement(
+            img,
+            mode=mode,
+            invert_mono=False,
+            strength=1.0,
+        )
+        low_alpha = np.asarray(low.getchannel("A"), dtype=np.uint16)
+        high_alpha = np.asarray(high.getchannel("A"), dtype=np.uint16)
+        assert int(high_alpha.sum()) > int(low_alpha.sum())
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [(-10, 0.0), (0, 0.0), (50, 0.5), (100, 1.0), (150, 1.0), ("bad", 0.5)],
+    )
+    def test_enhancement_strength_normalization(self, raw, expected):
+        assert SignatureFilter._normalize_enhancement_strength(raw) == expected
+
+    def test_invalid_enhancement_falls_back_to_plain_signature(self, tmp_path):
+        canvas = _make_canvas(400, 300)
+        sig_path = _make_full_opaque_signature_png(tmp_path, w=80, h=20)
+        ctx = _ctx(
+            [canvas],
+            signature_enabled=True,
+            signature_path=sig_path,
+            signature_invert_mono=False,
+            signature_anchor="middle_center",
+            signature_size_ratio=0.1,
+            signature_enhancement="unknown_mode",
+        )
+        SignatureFilter().process(ctx)
+        out = ctx.get_buffer()[0]
+        bbox = _find_black_bbox(out)
+        assert bbox is not None
+        xmin, xmax, ymin, ymax = bbox
+        assert abs((xmax - xmin + 1) - 30) <= 2
+        assert abs((ymax - ymin + 1) - 7) <= 2
 
 
 # ---- Phase 26：黑↔白切换 + 红点回归（端到端） ------------------------------
@@ -676,8 +758,8 @@ class TestInvertMonoEndToEnd:
             signature_enabled=True,
             signature_path=sig_path,
             signature_invert_mono=False,
-            signature_position="middle_center",
-            signature_width_ratio=0.5,
+            signature_anchor="middle_center",
+            signature_size_ratio=0.5,
         )
         SignatureFilter().process(ctx)
         out = ctx.get_buffer()[0]
@@ -695,8 +777,8 @@ class TestInvertMonoEndToEnd:
             signature_enabled=True,
             signature_path=sig_path,
             signature_invert_mono=True,
-            signature_position="middle_center",
-            signature_width_ratio=0.5,
+            signature_anchor="middle_center",
+            signature_size_ratio=0.5,
         )
         SignatureFilter().process(ctx)
         out = ctx.get_buffer()[0]
@@ -735,8 +817,8 @@ class TestInvertMonoEndToEnd:
             signature_enabled=True,
             signature_path=sig_path,
             signature_invert_mono=False,
-            signature_position="middle_center",
-            signature_width_ratio=0.2,  # target_w=80 = 原始宽度，无缩放
+            signature_anchor="middle_center",
+            signature_size_ratio=0.2,  # target_w=80 = 原始宽度，无缩放
         )
         SignatureFilter().process(ctx)
         out = ctx.get_buffer()[0]
@@ -751,8 +833,8 @@ class TestInvertMonoEndToEnd:
             signature_enabled=True,
             signature_path=sig_path,
             signature_invert_mono=True,  # 切换到白笔画模式
-            signature_position="middle_center",
-            signature_width_ratio=0.2,  # target_w=80 = 原始宽度，无缩放
+            signature_anchor="middle_center",
+            signature_size_ratio=0.2,  # target_w=80 = 原始宽度，无缩放
         )
         SignatureFilter().process(ctx)
         out = ctx.get_buffer()[0]
@@ -786,15 +868,15 @@ class TestInvertMonoEndToEnd:
             )
 
 
-# ---- Phase 22：尺寸模型 — target_w = area_w × ratio -------------------------
+# ---- 尺寸模型 — target_w = min(area_w, area_h) × ratio -----------------------
 
 
 class TestSignatureSizing:
-    """Phase 22：签名宽度由【原图区域宽度 × ratio】决定，分辨率无关；
+    """签名宽度由【照片主体短边 × ratio】决定；
     高度按签名 PNG 原始宽高比等比推算。"""
 
-    def test_width_equals_area_w_times_ratio(self, tmp_path):
-        """canvas 400×300，ratio=0.5 → target_w ≈ 200。"""
+    def test_width_equals_short_edge_times_ratio(self, tmp_path):
+        """canvas 400×300，ratio=0.5 → target_w ≈ 150。"""
         canvas = _make_canvas(400, 300)
         # 签名 100×40，宽高比 2.5:1
         sig_path = _make_full_opaque_signature_png(tmp_path, w=100, h=40)
@@ -803,8 +885,8 @@ class TestSignatureSizing:
             signature_enabled=True,
             signature_path=sig_path,
             signature_invert_mono=False,
-            signature_position="middle_center",
-            signature_width_ratio=0.5,
+            signature_anchor="middle_center",
+            signature_size_ratio=0.5,
         )
         SignatureFilter().process(ctx)
         out = ctx.get_buffer()[0]
@@ -813,12 +895,12 @@ class TestSignatureSizing:
         xmin, xmax, ymin, ymax = bbox
         actual_w = xmax - xmin + 1
         actual_h = ymax - ymin + 1
-        # area_w=400 → target_w=200；按 100:40=2.5 → target_h=200/2.5=80
-        assert abs(actual_w - 200) <= 2
-        assert abs(actual_h - 80) <= 2
+        # short_edge=300 → target_w=150；按 100:40=2.5 → target_h=150/2.5=60
+        assert abs(actual_w - 150) <= 2
+        assert abs(actual_h - 60) <= 2
 
     def test_width_scales_with_ratio(self, tmp_path):
-        """ratio=0.25 → target_w ≈ 100（canvas=400）。"""
+        """ratio=0.25 → target_w ≈ 75（canvas 400×300，短边 300）。"""
         canvas = _make_canvas(400, 300)
         sig_path = _make_full_opaque_signature_png(tmp_path, w=100, h=40)
         ctx = _ctx(
@@ -826,8 +908,8 @@ class TestSignatureSizing:
             signature_enabled=True,
             signature_path=sig_path,
             signature_invert_mono=False,
-            signature_position="middle_center",
-            signature_width_ratio=0.25,
+            signature_anchor="middle_center",
+            signature_size_ratio=0.25,
         )
         SignatureFilter().process(ctx)
         out = ctx.get_buffer()[0]
@@ -836,12 +918,12 @@ class TestSignatureSizing:
         xmin, xmax, ymin, ymax = bbox
         actual_w = xmax - xmin + 1
         actual_h = ymax - ymin + 1
-        # target_w=100, target_h=100/2.5=40
-        assert abs(actual_w - 100) <= 2
-        assert abs(actual_h - 40) <= 2
+        # target_w=75, target_h=75/2.5=30
+        assert abs(actual_w - 75) <= 2
+        assert abs(actual_h - 30) <= 2
 
-    def test_width_resolution_independent(self, tmp_path):
-        """同一 ratio 在不同分辨率下，输出宽占图比应一致（分辨率无关）。"""
+    def test_width_scales_with_short_edge(self, tmp_path):
+        """同一 ratio 在相同比例图像下，输出宽占图比保持一致。"""
         sig_path = _make_full_opaque_signature_png(tmp_path, w=100, h=40)
 
         def _render(canvas_w: int, canvas_h: int) -> float:
@@ -851,8 +933,8 @@ class TestSignatureSizing:
                 signature_enabled=True,
                 signature_path=sig_path,
                 signature_invert_mono=False,
-                signature_position="middle_center",
-                signature_width_ratio=0.2,
+                signature_anchor="middle_center",
+                signature_size_ratio=0.2,
             )
             SignatureFilter().process(ctx)
             out = ctx.get_buffer()[0]
@@ -864,13 +946,13 @@ class TestSignatureSizing:
 
         ratio_small = _render(400, 300)
         ratio_large = _render(2000, 1500)
-        # 分辨率无关：占图宽比应几乎一致（量化误差容忍）
-        assert abs(ratio_small - 0.2) < 0.02
-        assert abs(ratio_large - 0.2) < 0.02
+        # 400×300 与 2000×1500 同为 4:3，短边/宽度均为 0.75，宽占图比为 0.2×0.75=0.15。
+        assert abs(ratio_small - 0.15) < 0.02
+        assert abs(ratio_large - 0.15) < 0.02
         assert abs(ratio_small - ratio_large) < 0.02
 
-    def test_width_shrinks_with_horizontal_margins(self, tmp_path):
-        """left/right margin 缩小 area_w → 签名宽度按比例同步缩小。"""
+    def test_width_shrinks_when_margins_reduce_short_edge(self, tmp_path):
+        """left/right margin 缩小主体短边 → 签名宽度按比例同步缩小。"""
         sig_path = _make_full_opaque_signature_png(tmp_path, w=100, h=40)
 
         def _render(margins: dict) -> int:
@@ -880,8 +962,8 @@ class TestSignatureSizing:
                 signature_enabled=True,
                 signature_path=sig_path,
                 signature_invert_mono=False,
-                signature_position="middle_center",
-                signature_width_ratio=0.5,
+                signature_anchor="middle_center",
+                signature_size_ratio=0.5,
                 **margins,
             )
             SignatureFilter().process(ctx)
@@ -893,8 +975,8 @@ class TestSignatureSizing:
 
         w_no_margin = _render({})
         w_with_margin = _render({"left_margin": 50, "right_margin": 50})
-        # 无 margin: area_w=400 → target_w≈200
-        # 有 margin: area_w=300 → target_w≈150
+        # 无 margin: short_edge=400 → target_w≈200
+        # 有 margin: short_edge=300 → target_w≈150
         assert abs(w_no_margin - 200) <= 2
         assert abs(w_with_margin - 150) <= 2
 
@@ -903,15 +985,15 @@ class TestSignatureSizing:
         # 签名宽高比 100:40 = 2.5
         sig_path = _make_full_opaque_signature_png(tmp_path, w=100, h=40)
 
-        def _render(width_ratio: float) -> tuple[int, int]:
+        def _render(size_ratio: float) -> tuple[int, int]:
             canvas = _make_canvas(400, 300)
             ctx = _ctx(
                 [canvas],
                 signature_enabled=True,
                 signature_path=sig_path,
                 signature_invert_mono=False,
-                signature_position="middle_center",
-                signature_width_ratio=width_ratio,
+                signature_anchor="middle_center",
+                signature_size_ratio=size_ratio,
             )
             SignatureFilter().process(ctx)
             out = ctx.get_buffer()[0]
@@ -929,7 +1011,7 @@ class TestSignatureSizing:
     def test_oversize_height_fits_into_area(self, tmp_path):
         """target_h 超出 area_h 时应等比缩到 area 内（不溢出）。"""
         # 高瘦签名 50×500（宽高比 1:10）+ canvas 400×100
-        # ratio=1.0 → target_w=400, target_h=400×10=4000 远超 area_h=100
+        # ratio=1.0 → target_w=100, target_h=100×10=1000 远超 area_h=100
         canvas = _make_canvas(400, 100)
         sig_path = _make_full_opaque_signature_png(tmp_path, w=50, h=500)
         ctx = _ctx(
@@ -937,8 +1019,8 @@ class TestSignatureSizing:
             signature_enabled=True,
             signature_path=sig_path,
             signature_invert_mono=False,
-            signature_position="middle_center",
-            signature_width_ratio=1.0,
+            signature_anchor="middle_center",
+            signature_size_ratio=1.0,
         )
         SignatureFilter().process(ctx)
         out = ctx.get_buffer()[0]
@@ -952,11 +1034,11 @@ class TestSignatureSizing:
         assert actual_h <= 100
 
 
-# ---- Phase 22：signature_width_ratio clamp / 异常输入 -----------------------
+# ---- Phase 22：signature_size_ratio clamp / 异常输入 -----------------------
 
 
-class TestSignatureWidthRatio:
-    """Phase 22：``signature_width_ratio`` 的 clamp 行为与异常输入容错。"""
+class TestSignatureSizeRatio:
+    """Phase 22：``signature_size_ratio`` 的 clamp 行为与异常输入容错。"""
 
     def _render_with_ratio(self, tmp_path, *, ratio, area_h=300):
         canvas = _make_canvas(400, area_h)
@@ -967,56 +1049,56 @@ class TestSignatureWidthRatio:
             signature_enabled=True,
             signature_path=sig_path,
             signature_invert_mono=False,
-            signature_position="middle_center",
-            signature_width_ratio=ratio,
+            signature_anchor="middle_center",
+            signature_size_ratio=ratio,
         )
         SignatureFilter().process(ctx)
         return ctx.get_buffer()[0]
 
-    def test_default_ratio_15pct_yields_60px_on_400_canvas(self, tmp_path):
-        """默认 ratio=0.15 在 400px 宽画布上 → target_w=60。"""
-        out = self._render_with_ratio(tmp_path, ratio=0.15)
+    def test_default_ratio_20pct_yields_60px_on_short_edge_300(self, tmp_path):
+        """默认 ratio=0.20 在 400×300 画布短边上 → target_w=60。"""
+        out = self._render_with_ratio(tmp_path, ratio=0.20)
         bbox = _find_black_bbox(out)
         assert bbox is not None
         xmin, xmax, ymin, ymax = bbox
         actual_w = xmax - xmin + 1
         actual_h = ymax - ymin + 1
-        # target_w = 400 × 0.15 = 60；target_h = 60 × (20/80) = 15
+        # target_w = 300 × 0.20 = 60；target_h = 60 × (20/80) = 15
         assert abs(actual_w - 60) <= 2
         assert abs(actual_h - 15) <= 2
 
-    def test_ratio_05_yields_200px_on_400_canvas(self, tmp_path):
-        """ratio=0.5 → target_w=200。"""
+    def test_ratio_05_yields_150px_on_short_edge_300(self, tmp_path):
+        """ratio=0.5 → target_w=150。"""
         out = self._render_with_ratio(tmp_path, ratio=0.5)
         bbox = _find_black_bbox(out)
         assert bbox is not None
         xmin, xmax, _, _ = bbox
         actual_w = xmax - xmin + 1
-        assert abs(actual_w - 200) <= 2
+        assert abs(actual_w - 150) <= 2
 
-    def test_ratio_10_fills_area_width(self, tmp_path):
-        """ratio=1.0 → target_w 接近 area_w。"""
+    def test_ratio_10_fills_area_short_edge(self, tmp_path):
+        """ratio=1.0 → target_w 接近照片主体短边。"""
         out = self._render_with_ratio(tmp_path, ratio=1.0)
         bbox = _find_black_bbox(out)
         assert bbox is not None
         xmin, xmax, _, _ = bbox
         actual_w = xmax - xmin + 1
-        # target_w=400, target_h=400×(20/80)=100，area_h=300 OK 不 fit
-        assert abs(actual_w - 400) <= 2
+        # target_w=300, target_h=300×(20/80)=75，area_h=300 OK 不 fit
+        assert abs(actual_w - 300) <= 2
 
     def test_ratio_below_min_is_clamped(self, tmp_path):
-        """ratio < MIN_WIDTH_RATIO (0.01) 应被 clamp，不崩。"""
+        """ratio < MIN_SIZE_RATIO (0.01) 应被 clamp，不崩。"""
         out = self._render_with_ratio(tmp_path, ratio=0.0001)
         bbox = _find_black_bbox(out)
         # 极小 ratio clamp 到 0.01 → target_w=4，仍可见
         assert bbox is not None
         xmin, xmax, _, _ = bbox
         actual_w = xmax - xmin + 1
-        # 0.01 × 400 = 4
-        assert 1 <= actual_w <= 6
+        # 0.01 × 300 = 3
+        assert 1 <= actual_w <= 5
 
     def test_ratio_above_max_is_clamped_to_one(self, tmp_path):
-        """ratio > MAX_WIDTH_RATIO (1.0) → clamp 到 1.0，不超出 area。"""
+        """ratio > MAX_SIZE_RATIO (1.0) → clamp 到 1.0，不超出 area。"""
         out = self._render_with_ratio(tmp_path, ratio=99.0)
         bbox = _find_black_bbox(out)
         assert bbox is not None
@@ -1028,7 +1110,7 @@ class TestSignatureWidthRatio:
         assert actual_h <= 300
 
     def test_ratio_string_invalid_falls_back_to_default(self, tmp_path):
-        """ctx 里 signature_width_ratio 是非法字符串 → 回退到默认 0.15，不抛。"""
+        """ctx 里 signature_size_ratio 是非法字符串 → 回退到默认 0.20，不抛。"""
         canvas = _make_canvas(400, 300)
         sig_path = _make_full_opaque_signature_png(tmp_path, w=80, h=20)
         ctx = _ctx(
@@ -1036,8 +1118,8 @@ class TestSignatureWidthRatio:
             signature_enabled=True,
             signature_path=sig_path,
             signature_invert_mono=False,
-            signature_position="middle_center",
-            signature_width_ratio="not_a_number",
+            signature_anchor="middle_center",
+            signature_size_ratio="not_a_number",
         )
         # 不应抛
         SignatureFilter().process(ctx)
@@ -1047,7 +1129,7 @@ class TestSignatureWidthRatio:
         xmin, xmax, ymin, ymax = bbox
         actual_w = xmax - xmin + 1
         actual_h = ymax - ymin + 1
-        # 与 ratio=0.15 等价 → target_w=60, target_h=15
+        # 与 ratio=0.20 等价 → target_w=60, target_h=15
         assert abs(actual_w - 60) <= 2
         assert abs(actual_h - 15) <= 2
 
@@ -1067,11 +1149,12 @@ class TestSignatureConfigBuild:
             signature_path=overrides.get("path", "/tmp/sig.png"),
             # Phase 26：signature_color → signature_invert_mono
             signature_invert_mono=overrides.get("invert_mono", False),
-            signature_position=overrides.get("position", "bottom_right"),
-            signature_width_ratio=overrides.get("width_ratio", 0.15),
-            # Phase 24：offset_x/y 带正负号
-            signature_offset_x=overrides.get("offset_x", 0),
-            signature_offset_y=overrides.get("offset_y", 0),
+            signature_enhancement=overrides.get("enhancement", "none"),
+            signature_enhancement_strength=overrides.get("enhancement_strength", 50),
+            signature_anchor=overrides.get("anchor", "bottom_right"),
+            signature_size_ratio=overrides.get("size_ratio", 0.20),
+            signature_margin_x=overrides.get("margin_x", 0),
+            signature_margin_y=overrides.get("margin_y", 0),
         )
         state.set_advanced_config(cfg)
         return state
@@ -1095,21 +1178,24 @@ class TestSignatureConfigBuild:
             enabled=True,
             path="/sig.png",
             invert_mono=True,
-            position="top_center",
-            width_ratio=0.3,
-            offset_x=-15,
-            offset_y=25,
+            enhancement="soft_shadow",
+            enhancement_strength=80,
+            anchor="top_center",
+            size_ratio=0.3,
+            margin_x=15,
+            margin_y=25,
         )
         out = _build_signature_config(state)
         assert out["signature_enabled"] is True
         assert out["signature_path"] == "/sig.png"
         # Phase 26：signature_color 字段被替换为 signature_invert_mono
         assert out["signature_invert_mono"] is True
-        assert out["signature_position"] == "top_center"
-        assert out["signature_width_ratio"] == 0.3
-        # Phase 24：offset_x/y 带正负号
-        assert out["signature_offset_x"] == -15
-        assert out["signature_offset_y"] == 25
+        assert out["signature_enhancement"] == "soft_shadow"
+        assert out["signature_enhancement_strength"] == 80
+        assert out["signature_anchor"] == "top_center"
+        assert out["signature_size_ratio"] == 0.3
+        assert out["signature_margin_x"] == 15
+        assert out["signature_margin_y"] == 25
         # Phase 22：旧字段 height_ratio / scale 都不应出现
         assert "signature_height_ratio" not in out
         assert "signature_scale" not in out
@@ -1118,6 +1204,8 @@ class TestSignatureConfigBuild:
         assert "signature_offset_bottom" not in out
         assert "signature_offset_left" not in out
         assert "signature_offset_right" not in out
+        assert "signature_position" not in out
+        assert "signature_width_ratio" not in out
         # Phase 26：signature_color 不应再出现
         assert "signature_color" not in out
 
