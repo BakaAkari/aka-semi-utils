@@ -25,16 +25,35 @@
 - `.github/workflows/build-release.yml`：GitHub Actions 三平台 Release 构建。
 - `tests/`：单元测试与集成测试。
 
+## 项目治理文档
+
+- `docs/roadmap.md`：长期路线、阶段拆分、Backlog 和阶段完成定义。
+- `docs/development_workflow.md`：需求、文档、实现、测试、版本和发布协作流程。
+- `docs/versioning.md`：版本号、开发阶段、changelog、tag 和 Release 追溯规则。
+- `docs/changelog.md`：开发过程变更记录，Release notes 的输入来源之一。
+- `docs/phase*_design.md`：阶段或专项设计文档。
+
 ## 开发工作流
+
+### 默认协作流程
+
+涉及新功能、大改动、体验重构、配置结构调整或发布流程变化时，必须遵循：
+
+```text
+需求/方向 → roadmap/设计文档 → 用户确认 → 代码实现 → 自动验证 → 用户手动测试 → bug 迭代 → 文档/版本同步 → commit/tag/release
+```
+
+未完成文档对齐前，不要直接开始大规模代码实现；小 bug、文案、明显修复可直接进入实现，但仍需按需补充 changelog 或测试说明。
 
 ### 开始修改前
 
 1. 先查看当前 Git 状态：`git status --short`。
-2. 理解用户目标对应的层次：
+2. 阅读治理文档：`docs/roadmap.md`、`docs/development_workflow.md`、`docs/versioning.md`，并确认是否需要更新 `docs/changelog.md`。
+3. 理解用户目标对应的层次：
    - GUI 交互 / 状态：优先看 `gui/models.py`、`gui/main_window.py`、`gui/config_panel.py`、`gui/preview_panel.py`。
    - 图片处理：优先看 `processor/core.py`、`processor/filters.py`、`processor/generators.py`、`processor/mergers.py`。
    - 配置路径 / release 资源：优先看 `core/config_loader.py`、`scripts/build.spec`、`config/user.release.json`。
-3. 修改前尽量做语义搜索或读取相关上下文，不要凭记忆改关键路径。
+4. 修改前尽量做语义搜索或读取相关上下文，不要凭记忆改关键路径。
 
 ### 修改原则
 
@@ -45,6 +64,8 @@
 - UI 文案默认使用简体中文，内部代码命名保持现有英文风格。
 - 修改处理管线时要考虑批处理、预览、错误汇总三个入口是否一致。
 - 新增行为优先补测试；修 bug 至少跑相关测试，发布前跑全量测试。
+- 大功能提交必须包含对应 roadmap、阶段设计、changelog 或版本说明更新。
+- 用户负责最终 GUI 体验测试；agent 负责自动验证、修复迭代和可追溯记录。
 
 ## 常用验证命令
 
@@ -92,13 +113,16 @@ Release 默认配置隐私检查：
 
 ### 版本号
 
+- 版本策略以 `docs/versioning.md` 为准。
 - 默认做 patch bump，例如 `2.1.7` → `2.1.8`。
+- 完整 Phase 或用户可感知大功能通常做 minor bump，例如 `2.1.8` → `2.2.0`。
 - 如果用户明确要求 minor/major/pre-release，则按用户要求。
 - 同步更新以下位置：
   - `pyproject.toml` 的 `[project].version`
   - `uv.lock` 中本项目 `semi-photo-utils` 版本
   - `README.md` 当前版本
   - `gui/main_window.py` 关于弹窗版本
+  - `docs/changelog.md` 对应版本记录
 
 ### 发布前检查
 
@@ -165,5 +189,6 @@ Release 创建后不要只依赖自动生成说明。应按本次变更合理编
 
 - 默认使用简体中文。
 - 用户要的是结果时，不要反复询问；能从仓库判断的就直接执行。
+- 涉及新功能方向时，先输出或更新文档方案，等用户确认后再编码。
 - 汇报时列出：改了什么、验证结果、commit、tag、release 链接、资产列表。
 - 不要把长篇内部推理暴露给用户。

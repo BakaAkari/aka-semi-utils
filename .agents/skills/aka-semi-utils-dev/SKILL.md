@@ -8,6 +8,7 @@
 
 - 修改极简水印 / aka-semi-utils 的 GUI、图片处理、配置、模板、打包或测试。
 - 希望 agent 更理解本项目设计需求、状态模型、release 默认配置或水印处理管线。
+- 要求整理需求、更新 roadmap、编写阶段设计或维护开发文档。
 - 要求提交代码、生成短 commit 文本、推送到 GitHub。
 - 要求发布版本、修改版本号、创建 tag、用 GitHub Actions 打三平台包。
 - 要求编辑 Release changelog 或检查 Release assets。
@@ -34,13 +35,27 @@
 
 ## 开发流程
 
+默认协作链路：
+
+```text
+需求/方向 → roadmap/设计文档 → 用户确认 → 代码实现 → 自动验证 → 用户手动测试 → bug 迭代 → 文档/版本同步 → commit/tag/release
+```
+
+涉及新功能、大改动、体验重构、配置结构调整或发布流程变化时，先更新 `docs/roadmap.md`、`docs/development_workflow.md`、`docs/versioning.md`、`docs/changelog.md` 或对应 `docs/phase*_design.md`，等用户确认后再进行代码实现。
+
 1. 先查看仓库状态：
 
    ```bash
    git status --short
    ```
 
-2. 查找相关实现：
+2. 阅读治理文档：
+   - `docs/roadmap.md`
+   - `docs/development_workflow.md`
+   - `docs/versioning.md`
+   - `docs/changelog.md`
+
+3. 查找相关实现：
    - GUI 状态 / 自动保存：`gui/models.py`
    - 主窗口 / 关于弹窗 / 流程入口：`gui/main_window.py`
    - 配置面板：`gui/config_panel.py`
@@ -50,13 +65,15 @@
    - 配置路径：`core/config_loader.py`
    - 打包资源：`scripts/build.spec`
 
-3. 修改原则：
+4. 修改原则：
    - 保持 `AppState` 为 GUI 配置状态单一来源。
    - 小步修改，优先精确补丁。
    - 不要把用户本机路径写进 `config/user.release.json`。
    - 影响行为时补测试或跑相关测试。
+   - 大功能提交必须包含对应 roadmap、阶段设计、changelog 或版本说明更新。
+   - 用户负责最终 GUI 体验测试；agent 负责自动验证、修复迭代和可追溯记录。
 
-4. 常规验证：
+5. 常规验证：
 
    ```bash
    uv run pytest
@@ -117,6 +134,9 @@
 - `uv.lock`
 - `README.md`
 - `gui/main_window.py`
+- `docs/changelog.md`
+
+版本策略以 `docs/versioning.md` 为准。完整 Phase 或用户可感知大功能通常做 minor bump；普通 bug 修复通常做 patch bump。
 
 ### 3. Release 默认配置检查
 
@@ -219,6 +239,21 @@ Release 成功后，应根据实际 diff 编辑简洁 changelog。
    ```bash
    gh release edit vx.y.z --repo BakaAkari/aka-semi-utils --notes-file /tmp/aka-semi-utils-vx.y.z-notes.md
    ```
+
+## 文档整理流程
+
+当用户要求“全面整理项目”、“完善开发文档”、“更新 LLM 规则”、“规划功能路线”等，执行：
+
+1. 盘点现有 `docs/`、`AGENTS.md`、`.agents/skills/aka-semi-utils-dev/SKILL.md`、`README.md` 和版本状态。
+2. 新增或更新：
+   - `docs/roadmap.md`
+   - `docs/development_workflow.md`
+   - `docs/versioning.md`
+   - `docs/changelog.md`
+   - 对应 `docs/phase*_design.md`
+3. 同步更新 `AGENTS.md` 与本 Skill，保证后续 agent 遵守同一流程。
+4. 检查文档链接、版本一致性和 git diff。
+5. 汇报新增/修改文件、验证方式和后续建议。
 
 ## 完成汇报模板
 
