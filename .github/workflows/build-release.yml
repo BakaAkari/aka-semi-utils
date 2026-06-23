@@ -66,15 +66,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $homePage = Invoke-WebRequest -Uri "https://exiftool.org/" -UseBasicParsing
-          # 提取完整的 href URL（可能是 sourceforge 或 exiftool.org）
-          $match = [regex]::Match($homePage.Content, 'href="([^"]*exiftool-[0-9.]+_64\.zip[^"]*)"')
-          if (-not $match.Success) { throw "Unable to discover latest Windows exiftool zip from exiftool.org" }
-          $zipUrl = $match.Groups[1].Value
-          # 如果是相对路径，补全为 exiftool.org 域名
-          if ($zipUrl -notmatch '^https?://') { $zipUrl = "https://exiftool.org$zipUrl" }
-          Write-Host "Downloading $zipUrl"
-          # 使用 curl.exe 替代 Invoke-WebRequest：更可靠地处理 sourceforge 重定向链
+          # Phase 28 CI fix：固定版本号，避免依赖 exiftool.org 页面结构爬取。
+          # 更新频率约 6~12 个月，如需新版手动改此版本号并验证。
+          $exifVersion = "13.59"
+          $zipUrl = "https://sourceforge.net/projects/exiftool/files/exiftool-${exifVersion}_64.zip/download"
+          Write-Host "Downloading exiftool $exifVersion from $zipUrl"
           curl.exe -L -o exiftool.zip $zipUrl
           if ($LASTEXITCODE -ne 0) { throw "curl.exe failed to download exiftool zip" }
           Expand-Archive -Path exiftool.zip -DestinationPath exiftool_extracted -Force
