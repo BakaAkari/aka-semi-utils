@@ -66,10 +66,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $homePage = Invoke-WebRequest -Uri "${{ matrix.exiftool_url }}" -UseBasicParsing
-          $match = [regex]::Match($homePage.Content, 'exiftool-[0-9.]+_64\.zip')
+          $homePage = Invoke-WebRequest -Uri "https://exiftool.org/" -UseBasicParsing
+          # 提取完整的 href URL（可能是 sourceforge 或 exiftool.org）
+          $match = [regex]::Match($homePage.Content, 'href="([^"]*exiftool-[0-9.]+_64\.zip[^"]*)"')
           if (-not $match.Success) { throw "Unable to discover latest Windows exiftool zip from exiftool.org" }
-          $zipUrl = "https://exiftool.org/$($match.Value)"
+          $zipUrl = $match.Groups[1].Value
+          # 如果是相对路径，补全为 exiftool.org 域名
+          if ($zipUrl -notmatch '^https?://') { $zipUrl = "https://exiftool.org$zipUrl" }
           Write-Host "Downloading $zipUrl"
           Invoke-WebRequest -Uri $zipUrl -OutFile exiftool.zip -UseBasicParsing
           Expand-Archive -Path exiftool.zip -DestinationPath exiftool_extracted -Force
