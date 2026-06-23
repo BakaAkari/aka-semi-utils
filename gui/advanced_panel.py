@@ -214,7 +214,7 @@ class AdvancedPanel(QWidget):
         group.add_widget(size_hint)
 
         text_h_row = QHBoxLayout()
-        text_h_row.addWidget(QLabel("角落字体高度(px)："))
+        text_h_row.addWidget(QLabel("全局角字号(px)："))
         self.corner_text_height_px = QSpinBox()
         self.corner_text_height_px.setRange(0, 2000)
         self.corner_text_height_px.setValue(0)
