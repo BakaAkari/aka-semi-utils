@@ -74,7 +74,9 @@ jobs:
           # 如果是相对路径，补全为 exiftool.org 域名
           if ($zipUrl -notmatch '^https?://') { $zipUrl = "https://exiftool.org$zipUrl" }
           Write-Host "Downloading $zipUrl"
-          Invoke-WebRequest -Uri $zipUrl -OutFile exiftool.zip -UseBasicParsing
+          # 使用 curl.exe 替代 Invoke-WebRequest：更可靠地处理 sourceforge 重定向链
+          curl.exe -L -o exiftool.zip $zipUrl
+          if ($LASTEXITCODE -ne 0) { throw "curl.exe failed to download exiftool zip" }
           Expand-Archive -Path exiftool.zip -DestinationPath exiftool_extracted -Force
           New-Item -ItemType Directory -Force -Path exiftool | Out-Null
           $found = Get-ChildItem -Path exiftool_extracted -Filter "exiftool*.exe" -Recurse | Select-Object -First 1
