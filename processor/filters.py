@@ -43,7 +43,7 @@ class ResizeFilter(FilterProcessor):
         buffer = []
         for img in ctx.get_buffer():
             if width and height:
-                target_size = (int(width), int(height))
+                target_size = (max(1, int(width)), max(1, int(height)))
             else:
                 if width:
                     scale_f = float(width) / img.width
@@ -54,7 +54,7 @@ class ResizeFilter(FilterProcessor):
                 else:
                     ctx.set("success", False)
                     return
-                target_size = (int(img.width * scale_f), int(img.height * scale_f))
+                target_size = (max(1, int(img.width * scale_f)), max(1, int(img.height * scale_f)))
 
             ret_img = img.resize(target_size, resample=Image.Resampling.LANCZOS)
             buffer.append(ret_img)

@@ -201,8 +201,10 @@ class RichTextGenerator(Generator):
         metrics = font.getmetrics()
         text = ' ' if not segment.text or segment.text == '' else segment.text
         bbox = font.getbbox(text)
-        # 创建透明画布
-        image = Image.new('RGBA', (int(bbox[2] - bbox[0]), metrics[0] + abs(metrics[1])), (0, 0, 0, 0))
+        # 创建透明画布（最小 1x1，避免 0 尺寸导致后续 resize 失败）
+        text_w = max(1, int(bbox[2] - bbox[0])) if bbox else 1
+        text_h = max(1, metrics[0] + abs(metrics[1]))
+        image = Image.new('RGBA', (text_w, text_h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
         # 直接绘制文本
         draw.text((0, 0), text, font=font, fill=_parse_color(segment.color))
