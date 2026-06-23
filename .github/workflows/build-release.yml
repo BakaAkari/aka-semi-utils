@@ -11,6 +11,11 @@ on:
 permissions:
   contents: write          # 需要写权限才能创建 Release / 上传资产
 
+env:
+  # 集中管理 exiftool 版本号；更新时只改这里，缓存会自动失效。
+  # exiftool 更新频率约 6-12 个月，见 https://exiftool.org/history.html
+  EXIFTOOL_VERSION: "13.59"
+
 jobs:
   build:
     strategy:
@@ -19,18 +24,12 @@ jobs:
         include:
           - os: windows-latest
             platform: windows
-            exiftool_url: "https://exiftool.org/"
-            exiftool_ext: zip
             artifact_ext: zip
           - os: macos-latest
             platform: macos
-            exiftool_url: "https://exiftool.org/ExifTool-13.10.pkg"
-            exiftool_ext: pkg
             artifact_ext: tar.gz
           - os: ubuntu-latest
             platform: linux
-            exiftool_url: ""    # Linux 用系统包管理器
-            exiftool_ext: ""
             artifact_ext: tar.gz
 
     runs-on: ${{ matrix.os }}
@@ -59,18 +58,26 @@ jobs:
           uv pip install pyinstaller
 
       # ============================================================
-      # 2. 下载 exiftool（各平台不同策略）
+      # 2. 缓存 exiftool（Windows）
+      # ============================================================
+      - name: Cache exiftool (Windows)
+        if: matrix.platform == 'windows'
+        id: cache-exiftool
+        uses: actions/cache@v4
+        with:
+          path: exiftool
+          key: exiftool-win64-v${{ env.EXIFTOOL_VERSION }}
+
+      # ============================================================
+      # 3. 下载 exiftool（各平台不同策略）
       # ============================================================
       - name: Download exiftool (Windows)
-        if: matrix.platform == 'windows'
+        if: matrix.platform == 'windows' && steps.cache-exiftool.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # Phase 28 CI fix：固定版本号，避免依赖 exiftool.org 页面结构爬取。
-          # 更新频率约 6~12 个月，如需新版手动改此版本号并验证。
-          $exifVersion = "13.59"
-          $zipUrl = "https://sourceforge.net/projects/exiftool/files/exiftool-${exifVersion}_64.zip/download"
-          Write-Host "Downloading exiftool $exifVersion from $zipUrl"
+          $zipUrl = "https://sourceforge.net/projects/exiftool/files/exiftool-${{ env.EXIFTOOL_VERSION }}_64.zip/download"
+          Write-Host "Cache miss — downloading exiftool ${{ env.EXIFTOOL_VERSION }} from $zipUrl"
           curl.exe -L -o exiftool.zip $zipUrl
           if ($LASTEXITCODE -ne 0) { throw "curl.exe failed to download exiftool zip" }
           Expand-Archive -Path exiftool.zip -DestinationPath exiftool_extracted -Force
@@ -109,7 +116,7 @@ jobs:
           chmod +x exiftool/exiftool
 
       # ============================================================
-      # 3. PyInstaller 构建
+      # 4. PyInstaller 构建
       # ============================================================
       - name: Run PyInstaller
         run: uv run pyinstaller scripts/build.spec --clean --noconfirm
@@ -122,7 +129,7 @@ jobs:
           ls -la "dist/aka-semi-utils/" | head -20
 
       # ============================================================
-      # 4. 冒烟测试
+      # 5. 冒烟测试
       # ============================================================
       - name: Smoke test
         shell: bash
@@ -139,7 +146,7 @@ jobs:
           echo "All key artifacts present ✓"
 
       # ============================================================
-      # 5. 打包压缩
+      # 6. 打包压缩
       # ============================================================
       - name: Compute version string
         id: version
@@ -171,7 +178,7 @@ jobs:
           echo "ARTIFACT_PATH=$NAME" >> "$GITHUB_ENV"
 
       # ============================================================
-      # 6. 上传 artifact
+      # 7. 上传 artifact
       # ============================================================
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -181,7 +188,7 @@ jobs:
           retention-days: 14
 
       # ============================================================
-      # 7. 发布 Release（仅 tag 触发）
+      # 8. 发布 Release（仅 tag 触发）
       # ============================================================
       - name: Create / update GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
