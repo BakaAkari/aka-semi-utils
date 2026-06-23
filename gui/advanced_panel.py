@@ -207,20 +207,23 @@ class AdvancedPanel(QWidget):
         color_row.addStretch()
         group.add_layout(color_row)
 
-        # Phase 11：固定像素尺寸（0 = 旧自适应）
-        size_hint = QLabel("固定像素尺寸（0 = 按图片比例自适应；非 0 = 锁定为统一像素，不再随原图尺寸变化）")
+        # Phase 28：相对比例字号（占图片短边比例，0 = 回退到旧自适应）
+        size_hint = QLabel("相对比例字号（0 = 按图片比例自适应；非 0 = 锁定为图片短边比例，横竖屏一致）")
         size_hint.setWordWrap(True)
         size_hint.setStyleSheet("color: #888888; font-size: 11px;")
         group.add_widget(size_hint)
 
         text_h_row = QHBoxLayout()
-        text_h_row.addWidget(QLabel("全局角字号(px)："))
-        self.corner_text_height_px = QSpinBox()
-        self.corner_text_height_px.setRange(0, 2000)
-        self.corner_text_height_px.setValue(0)
-        self.corner_text_height_px.setFixedWidth(90)
-        self.corner_text_height_px.valueChanged.connect(self._on_changed)
-        text_h_row.addWidget(self.corner_text_height_px)
+        text_h_row.addWidget(QLabel("全局角字号比例："))
+        self.corner_text_ratio = QDoubleSpinBox()
+        self.corner_text_ratio.setRange(0.0, 0.5)
+        self.corner_text_ratio.setDecimals(2)
+        self.corner_text_ratio.setSingleStep(0.01)
+        self.corner_text_ratio.setValue(0.0)
+        self.corner_text_ratio.setFixedWidth(90)
+        self.corner_text_ratio.valueChanged.connect(self._on_changed)
+        text_h_row.addWidget(self.corner_text_ratio)
+        text_h_row.addWidget(QLabel("（占图片短边）"))
         text_h_row.addStretch()
         group.add_layout(text_h_row)
 
@@ -480,7 +483,7 @@ class AdvancedPanel(QWidget):
             trim_threshold=self.trim_threshold.value(),
             concat_direction=self.concat_direction.currentText(),
             alignment_mode=self.alignment_mode.currentText(),
-            corner_text_height_px=self.corner_text_height_px.value(),
+            corner_text_ratio=self.corner_text_ratio.value(),
             footer_height_px=self.footer_height_px.value(),
             logo_height_px=self.logo_height_px.value(),
         )
@@ -517,8 +520,8 @@ class AdvancedPanel(QWidget):
             self.global_color.setText(cfg.global_color)
             self.global_color_btn.setStyleSheet(f"background-color: {cfg.global_color}; border-radius: 4px; border: 1px solid #666666;")
 
-            # Phase 11：固定像素尺寸
-            self.corner_text_height_px.setValue(cfg.corner_text_height_px)
+            # Phase 28：相对比例字号
+            self.corner_text_ratio.setValue(cfg.corner_text_ratio)
             self.footer_height_px.setValue(cfg.footer_height_px)
             self.logo_height_px.setValue(cfg.logo_height_px)
 

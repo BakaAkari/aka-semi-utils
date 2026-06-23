@@ -20,7 +20,7 @@
         "相机型号"
       ],
       "separator": " ",
-      "font_size": 0
+      "font_size_ratio": 0.0
     },
     "left_bottom": {
       "chips": [
@@ -43,19 +43,19 @@
       ],
       "fields": [],
       "separator": " ",
-      "font_size": 0
+      "font_size_ratio": 0.0
     },
     "right_top": {
       "chips": [],
       "fields": [],
       "separator": " ",
-      "font_size": 0
+      "font_size_ratio": 0.0
     },
     "right_bottom": {
       "chips": [],
       "fields": [],
       "separator": " ",
-      "font_size": 0
+      "font_size_ratio": 0.0
     }
   },
   "logo": {
@@ -68,7 +68,7 @@
   "advanced": {
     "global_font": "NotoSansCJKsc-Bold.otf",
     "global_color": "#242424",
-    "corner_text_height_px": 0,
+    "corner_text_ratio": 0.0,
     "footer_height_px": 0,
     "logo_height_px": 0,
     "left_margin": 0,

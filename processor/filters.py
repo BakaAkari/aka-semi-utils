@@ -337,15 +337,22 @@ class WatermarkFilter(FilterProcessor):
     def _render_corner_texts(self, ctx: PipelineContext, params: dict) -> dict[str, Image.Image]:
         """渲染左上/左下/右上/右下四个角落的文本图。
 
-        Phase 11：彻底关闭"按画布宽度自动缩放文本"的行为 —
-        仅当 corner 配置未显式指定 ``height`` 时，才用 ``bottom_margin * 0.3`` 作为兜底；
+        Phase 28：支持相对比例字号（height_ratio）—
+        若 corner 配置包含 ``height_ratio``，按图片短边计算实际像素高度；
+        若显式指定 ``height``（旧配置），直接沿用；
+        否则用 ``bottom_margin * 0.3`` 兜底。
         对超宽文本只记录 warning 不再 resize，保证字号在不同分辨率源图下完全一致。
         """
+        img = ctx.get_buffer()[0]
+        short_edge = min(img.width, img.height)
         bottom_margin = params["bottom_margin"]
         for t_s in [ctx.get("left_top"), ctx.get("left_bottom"),
                     ctx.get("right_top"), ctx.get("right_bottom")]:
-            if t_s and "height" not in t_s:
-                t_s["height"] = int(bottom_margin * 0.3)
+            if t_s:
+                if "height_ratio" in t_s:
+                    t_s["height"] = int(short_edge * t_s["height_ratio"])
+                elif "height" not in t_s:
+                    t_s["height"] = int(bottom_margin * 0.3)
 
         def _process_corner(corner_cfg):
             if corner_cfg is None:
@@ -359,8 +366,7 @@ class WatermarkFilter(FilterProcessor):
             "right_bottom": _process_corner(ctx.get("right_bottom")),
         }
 
-        # Phase 11：禁用自动缩放 —— 仅在文本超过画布安全宽度时给出 warning，绝不 resize。
-        img = ctx.get_buffer()[0]
+        # Phase 28：禁用自动缩放 —— 仅在文本超过画布安全宽度时给出 warning，绝不 resize。
         canvas_width = img.width + params["left_margin"] + params["right_margin"]
         effective_width = canvas_width - params["left_margin"] - params["right_margin"]
         max_text_width = max(1, int(effective_width * 0.42))
@@ -370,7 +376,7 @@ class WatermarkFilter(FilterProcessor):
                 logger.warning(
                     f"[WatermarkFilter] {corner_name} 文本宽度 {text_img.width}px 超过画布安全宽度 "
                     f"{max_text_width}px（可能被画布裁剪）。"
-                    f"Phase 11 已禁用自动缩放以保证字号统一 —— 请减小 corner.height 或精简文本。"
+                    f"Phase 28 已禁用自动缩放以保证字号统一 —— 请减小 corner.height 或精简文本。"
                 )
 
         return corners

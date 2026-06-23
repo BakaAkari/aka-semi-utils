@@ -6,6 +6,14 @@
 
 ## Unreleased
 
+### Changed
+
+- Phase 28：字号系统从固定像素（px）全面重构为相对比例（占图片短边比例）。
+  - 角级字号 `font_size`（int，px）→ `font_size_ratio`（float，比例），UI 下拉菜单改为百分比选项（1%~15%）。
+  - 全局角字号 `corner_text_height_px`（int，px）→ `corner_text_ratio`（float，比例），高级面板改为 `QDoubleSpinBox`。
+  - 处理器渲染时按 `short_edge * ratio` 计算实际像素，横竖屏字号视觉大小一致。
+  - 修复误导性注释：`0 = 继承 advanced.global_font_size` 修正为实际语义。
+
 ### Documentation
 
 - 新增项目治理文档入口，明确 roadmap、开发流程、版本追溯和 changelog 的职责分工。

@@ -55,13 +55,13 @@ class CornerConfig:
     - 新增 ``chips``（``List[FieldChip]``）—— 推荐写法
     - 旧 ``fields``（``List[str]``）—— 仅作向后兼容；
       ``load_from_disk`` 会自动迁移成 ``chips``
-    - ``font_size`` —— 角级字号覆盖；字体和颜色统一由全局参数决定
+    - ``font_size_ratio`` —— 角级字号占图片短边比例；字体和颜色统一由全局参数决定
     """
 
     chips: list[FieldChip] = field(default_factory=list)  # Phase 6.3 主数据
     fields: list[str] = field(default_factory=list)          # 旧兼容字段（中文标签）
     separator: str = " "                                      # 分隔符（默认空格）
-    font_size: int = 0                                        # 0 = 继承 advanced.global_font_size
+    font_size_ratio: float = 0.0                              # 角级字号占图片短边比例；0 = 继承全局
 
 
 @dataclass
@@ -80,9 +80,9 @@ class AdvancedConfig:
     global_font: str = "NotoSansCJKsc-Regular.otf"
     global_color: str = "#242424"  # 深灰，与默认白底水印对比
 
-    # Phase 11：固定像素尺寸（消除"按图片高度自适应"的不一致）。
-    # 全部为 0 时回退到旧的比例自适应；非 0 时强制锁定像素，不论原图尺寸。
-    corner_text_height_px: int = 0   # 角落文本图高度（不再随 bottom_margin*0.3 漂移）
+    # Phase 28：相对比例字号（占图片短边比例）。
+    # 全部为 0 时回退到旧的比例自适应（bottom_margin*0.3）。
+    corner_text_ratio: float = 0.0   # 全局角字号占图片短边比例
     footer_height_px: int = 0        # 底部水印条高度（不再随 img.height*0.12 漂移）
     logo_height_px: int = 0          # 中央 logo 高度（不再撑满整条水印）
 
@@ -233,7 +233,7 @@ def _corner_from_dict(data: dict[str, Any] | None) -> CornerConfig:
         chips=chips,
         fields=list(data.get("fields", []) or []),  # 仍保留中文 fields，便于旧消费方读取
         separator=str(data.get("separator", " ")),
-        font_size=int(data.get("font_size", 0) or 0),
+        font_size_ratio=float(data.get("font_size_ratio", 0.0) or 0.0),
     )
 
 
@@ -243,7 +243,7 @@ def _corner_to_dict(corner: CornerConfig) -> dict[str, Any]:
         "chips": [_dc_to_dict(c) for c in corner.chips],
         "fields": list(corner.fields),
         "separator": corner.separator,
-        "font_size": corner.font_size,
+        "font_size_ratio": corner.font_size_ratio,
     }
 
 

@@ -112,7 +112,7 @@ class TestNewChipsDeserialize:
         assert c1.field_id == "custom_text"
         assert c1.custom_text == "拍于云南"
         assert corner.separator == " | "
-        assert corner.font_size == 0
+        assert corner.font_size_ratio == 0.0
 
     def test_chips_with_partial_attrs_use_defaults(self):
         """缺失字段应回退到默认值（空字符串等）。"""
@@ -213,7 +213,7 @@ class TestEdgeCases:
         assert corner.chips == []
         assert corner.fields == []
         assert corner.separator == " "
-        assert corner.font_size == 0
+        assert corner.font_size_ratio == 0.0
 
     def test_empty_dict_returns_default(self):
         corner = _corner_from_dict({})
@@ -234,9 +234,9 @@ class TestEdgeCases:
         corner = _corner_from_dict({"chips": [], "separator": " - "})
         assert corner.separator == " - "
 
-    def test_font_size_inherit_when_missing(self):
+    def test_font_size_ratio_inherit_when_missing(self):
         corner = _corner_from_dict({"chips": []})
-        assert corner.font_size == 0
+        assert corner.font_size_ratio == 0.0
 
 
 # ============================================================
@@ -269,7 +269,7 @@ class TestRoundTrip:
                 ),
             ],
             separator=" | ",
-            font_size=24,
+            font_size_ratio=0.04,
         )
         serialized = _corner_to_dict(original)
         restored = _corner_from_dict(serialized)
@@ -279,7 +279,7 @@ class TestRoundTrip:
         assert c.field_id == "custom_text"
         assert c.custom_text == "HELLO"
         assert restored.separator == " | "
-        assert restored.font_size == 24
+        assert restored.font_size_ratio == 0.04
 
     def test_roundtrip_empty(self):
         original = CornerConfig()
@@ -290,11 +290,11 @@ class TestRoundTrip:
     def test_to_dict_shape(self):
         """``_corner_to_dict`` 应总返回稳定的 4 个 key。"""
         d = _corner_to_dict(CornerConfig())
-        assert set(d.keys()) == {"chips", "fields", "separator", "font_size"}
+        assert set(d.keys()) == {"chips", "fields", "separator", "font_size_ratio"}
         assert d["chips"] == []
         assert d["fields"] == []
         assert d["separator"] == " "
-        assert d["font_size"] == 0
+        assert d["font_size_ratio"] == 0.0
 
     def test_to_dict_chips_serialize_to_dicts(self):
         corner = CornerConfig(chips=[FieldChip(field_id="make")])

@@ -217,9 +217,9 @@ def _build_watermark_config(state: AppState) -> dict[str, Any]:
                 "font_path": font,
             })
 
-        # Phase 11：固定字号 — 把每个 segment 显式带上 height（像素）
+        # Phase 28：相对比例字号 — 传递 height_ratio，由处理器按图片短边计算实际像素。
         # 0 = 沿用旧自适应（处理器内部仍按 bottom_margin*0.3 推导）。
-        fixed_text_h = corner_cfg.font_size or state.advanced.corner_text_height_px
+        height_ratio = corner_cfg.font_size_ratio or state.advanced.corner_text_ratio
 
         # 角级默认样式（用于分隔符 & 单字段路径）
         default_font = state.advanced.global_font
@@ -258,9 +258,9 @@ def _build_watermark_config(state: AppState) -> dict[str, Any]:
                 "text_segments": text_segments,
             }
 
-        # Phase 11：显式锁高度，处理器侧不再用 bottom_margin*0.3 覆盖
-        if fixed_text_h > 0:
-            corner_node["height"] = fixed_text_h
+        # Phase 28：传递比例，处理器在渲染时根据图片短边计算实际像素高度
+        if height_ratio > 0:
+            corner_node["height_ratio"] = height_ratio
         config[corner] = corner_node
 
     # Logo 配置
@@ -287,7 +287,7 @@ def _build_watermark_config(state: AppState) -> dict[str, Any]:
     if state.custom_text:
         config["custom_text"] = state.custom_text
 
-    # Phase 11：固定水印条高度 + 中央 logo 高度（0 不写入 → 走旧自适应）
+    # Phase 28：固定水印条高度 + 中央 logo 高度（0 不写入 → 走旧自适应）
     if state.advanced.footer_height_px > 0:
         config["bottom_margin"] = state.advanced.footer_height_px
     if state.advanced.logo_height_px > 0:
