@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # Phase 6 user.json 版本号；老格式（无 version 字段）按 v1 兼容处理
-USER_CONFIG_VERSION = 2
+USER_CONFIG_VERSION = 3
 
 # 自动保存防抖窗口（毫秒）
 AUTOSAVE_DEBOUNCE_MS = 300
@@ -83,7 +83,7 @@ class AdvancedConfig:
     # Phase 28：相对比例字号（占图片短边比例）。
     # 全部为 0 时回退到旧的比例自适应（bottom_margin*0.3）。
     corner_text_ratio: float = 0.0   # 全局角字号占图片短边比例
-    footer_height_px: int = 0        # 底部水印条高度（不再随 img.height*0.12 漂移）
+    footer_height_px: int = 120      # 底部水印条高度（固定像素，不再随 img.height 漂移）
     logo_height_px: int = 0          # 中央 logo 高度（不再撑满整条水印）
 
     # 边框/留白
@@ -129,9 +129,10 @@ class AdvancedConfig:
     # 9 宫格锚点：top_left/top_center/top_right/middle_left/middle_center/middle_right
     #          /bottom_left/bottom_center/bottom_right。
     signature_anchor: str = "middle_center"
-    # 偏移参数：签名中心相对 9 宫格参考点的有符号偏移；x 正向右，y 正向下。
-    signature_margin_x: int = 80
-    signature_margin_y: int = 60
+    # 偏移参数：签名中心相对 9 宫格参考点的有符号偏移（占照片主体宽/高比例）。
+    # x 正向右，y 正向下；范围 [-0.5, 0.5]。
+    signature_margin_x: float = 0.0
+    signature_margin_y: float = 0.0
     # 尺寸 = 签名宽度占【照片主体短边】比例；高度按签名 PNG 原始宽高比等比。
     signature_size_ratio: float = 0.20
 
@@ -493,6 +494,12 @@ class AppState(QObject):
         self.logo = _dc_from_dict(LogoConfig, data.get("logo"))
         self.custom_text = data.get("custom_text", "") or ""
         self.advanced = _dc_from_dict(AdvancedConfig, data.get("advanced"))
+
+        # v2→v3：signature_margin_x/y 从像素值迁移为比例值
+        # 旧版整数值在新语义下完全不可用，重置为 0.0（用户可重新微调）。
+        if data.get("version", 1) < 3:
+            self.advanced.signature_margin_x = 0.0
+            self.advanced.signature_margin_y = 0.0
 
     def save_to_disk(self, project_root: Path | None = None) -> bool:
         """保存当前状态到 user.json。

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "output": {
     "path": "{source_dir}/output",
     "override": true
@@ -67,7 +67,7 @@
     "global_font": "NotoSansCJKsc-Regular.otf",
     "global_color": "#242424",
     "corner_text_ratio": 0.0,
-    "footer_height_px": 0,
+    "footer_height_px": 120,
     "logo_height_px": 0,
     "left_margin": 0,
     "right_margin": 0,
@@ -93,8 +93,8 @@
     "signature_enhancement": "none",
     "signature_enhancement_strength": 50,
     "signature_anchor": "middle_center",
-    "signature_margin_x": 80,
-    "signature_margin_y": 60,
+    "signature_margin_x": 0.0,
+    "signature_margin_y": 0.0,
     "signature_size_ratio": 0.2
   }
 }

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "output": {
     "path": "{source_dir}/logo",
     "override": true
@@ -66,18 +66,18 @@
   },
   "custom_text": "",
   "advanced": {
-    "global_font": "NotoSansCJKsc-Bold.otf",
+    "global_font": "Roboto-Bold.ttf",
     "global_color": "#242424",
     "corner_text_ratio": 0.0,
-    "footer_height_px": 0,
+    "footer_height_px": 1000,
     "logo_height_px": 0,
     "left_margin": 0,
     "right_margin": 0,
     "top_margin": 0,
     "bottom_margin": 0,
     "margin_color": "#FFFFFF",
-    "border_radius": 80,
-    "shadow_radius": 20,
+    "border_radius": 40,
+    "shadow_radius": 40,
     "shadow_color": "#000000",
     "quality": 95,
     "subsampling": 0,
@@ -94,9 +94,9 @@
     "signature_enhancement": "soft_shadow",
     "signature_enhancement_strength": 70,
     "signature_invert_mono": true,
-    "signature_anchor": "bottom_center",
-    "signature_margin_x": 0,
-    "signature_margin_y": -950,
-    "signature_size_ratio": 0.2
+    "signature_anchor": "bottom_right",
+    "signature_margin_x": -0.05,
+    "signature_margin_y": -0.12,
+    "signature_size_ratio": 0.18
   }
 }

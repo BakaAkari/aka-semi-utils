@@ -89,7 +89,7 @@ class TestWatermarkParams:
         assert p.delimiter_color == "black"
         # delimiter_width = int(1000 * 0.003) = 3
         assert p.delimiter_width == 3
-        # bottom_margin 默认 = int(height * 0.12) = 120
+        # bottom_margin 默认固定值 120px
         assert p.bottom_margin == 120
         # middle_spacing = int(120 * 0.05) = 6
         assert p.middle_spacing == 6

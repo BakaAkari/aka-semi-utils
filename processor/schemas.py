@@ -118,7 +118,7 @@ class WatermarkParams:
 
     @classmethod
     def from_ctx(cls, ctx: PipelineContext, img_width: int, img_height: int) -> WatermarkParams:
-        bottom_margin = ctx.getint("bottom_margin", int(img_height * 0.12))
+        bottom_margin = ctx.getint("bottom_margin", 120)
         return cls(
             color=ctx.get("color", "white"),
             delimiter_color=ctx.get("delimiter_color", "black"),

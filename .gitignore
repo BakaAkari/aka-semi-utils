@@ -19,6 +19,7 @@ build/
 dist/
 *.egg-info/
 *.spec.bak
+*.app/
 
 # ===== 虚拟环境 =====
 .venv/

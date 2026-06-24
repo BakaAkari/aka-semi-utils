@@ -43,6 +43,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -878,24 +879,28 @@ class SignatureTab(QWidget):
         self.size_ratio_spin.valueChanged.connect(self._on_changed)
         size_offset_grid.addWidget(self.size_ratio_spin, 0, 1)
 
-        # 偏移参数：签名中心相对九宫格参考点的有符号偏移。
+        # 偏移参数：签名中心相对九宫格参考点的有符号偏移（占照片主体宽/高比例）。
         self.margin_x_label = QLabel("X：")
-        self.margin_x_label.setToolTip("签名中心的水平偏移；正数向右，负数向左。")
+        self.margin_x_label.setToolTip("签名中心相对九宫格参考点的水平偏移比例；正数向右，负数向左。")
         size_offset_grid.addWidget(self.margin_x_label, 0, 2)
-        self.margin_x_spin = QSpinBox()
-        self.margin_x_spin.setRange(-9999, 9999)
-        self.margin_x_spin.setValue(80)
-        self.margin_x_spin.setSuffix(" px")
+        self.margin_x_spin = QDoubleSpinBox()
+        self.margin_x_spin.setRange(-50.0, 50.0)
+        self.margin_x_spin.setSingleStep(1.0)
+        self.margin_x_spin.setDecimals(1)
+        self.margin_x_spin.setValue(0.0)
+        self.margin_x_spin.setSuffix(" %")
         self.margin_x_spin.setMinimumWidth(108)
         self.margin_x_spin.valueChanged.connect(self._on_changed)
         size_offset_grid.addWidget(self.margin_x_spin, 0, 3)
         self.margin_y_label = QLabel("Y：")
-        self.margin_y_label.setToolTip("签名中心的垂直偏移；正数向下，负数向上。")
+        self.margin_y_label.setToolTip("签名中心相对九宫格参考点的垂直偏移比例；正数向下，负数向上。")
         size_offset_grid.addWidget(self.margin_y_label, 0, 4)
-        self.margin_y_spin = QSpinBox()
-        self.margin_y_spin.setRange(-9999, 9999)
-        self.margin_y_spin.setValue(60)
-        self.margin_y_spin.setSuffix(" px")
+        self.margin_y_spin = QDoubleSpinBox()
+        self.margin_y_spin.setRange(-50.0, 50.0)
+        self.margin_y_spin.setSingleStep(1.0)
+        self.margin_y_spin.setDecimals(1)
+        self.margin_y_spin.setValue(0.0)
+        self.margin_y_spin.setSuffix(" %")
         self.margin_y_spin.setMinimumWidth(108)
         self.margin_y_spin.valueChanged.connect(self._on_changed)
         size_offset_grid.addWidget(self.margin_y_spin, 0, 5)
@@ -939,8 +944,8 @@ class SignatureTab(QWidget):
             self.size_ratio_spin.setValue(
                 max(1, min(100, round(cfg.signature_size_ratio * 100)))
             )
-            self.margin_x_spin.setValue(cfg.signature_margin_x)
-            self.margin_y_spin.setValue(cfg.signature_margin_y)
+            self.margin_x_spin.setValue(cfg.signature_margin_x * 100.0)
+            self.margin_y_spin.setValue(cfg.signature_margin_y * 100.0)
             self._refresh_distance_labels()
         finally:
             self._loading = False
@@ -960,8 +965,8 @@ class SignatureTab(QWidget):
                 self.position_combo.currentData() or "middle_center"
             ),
             signature_size_ratio=self.size_ratio_spin.value() / 100.0,
-            signature_margin_x=self.margin_x_spin.value(),
-            signature_margin_y=self.margin_y_spin.value(),
+            signature_margin_x=self.margin_x_spin.value() / 100.0,
+            signature_margin_y=self.margin_y_spin.value() / 100.0,
         )
         self.state.set_advanced_config(new_cfg)
 
@@ -987,18 +992,18 @@ class SignatureTab(QWidget):
     def _refresh_distance_labels(self) -> None:
         """刷新偏移控件文案。
 
-        签名定位统一采用「九宫格参考点 + 签名中心偏移」语义，
+        签名定位统一采用「九宫格参考点 + 签名中心偏移比例」语义，
         因此两个方向都允许正负值，不再按边缘锚点切换为距边距离。
         """
-        self.margin_x_spin.setMinimum(-9999)
-        self.margin_y_spin.setMinimum(-9999)
+        self.margin_x_spin.setMinimum(-50.0)
+        self.margin_y_spin.setMinimum(-50.0)
         self.margin_x_label.setText("X：")
         self.margin_y_label.setText("Y：")
         self.margin_x_spin.setToolTip(
-            "签名中心相对九宫格参考点的水平偏移；正数向右，负数向左。"
+            "签名中心相对九宫格参考点的水平偏移比例；正数向右，负数向左。"
         )
         self.margin_y_spin.setToolTip(
-            "签名中心相对九宫格参考点的垂直偏移；正数向下，负数向上。"
+            "签名中心相对九宫格参考点的垂直偏移比例；正数向下，负数向上。"
         )
 
     # ---- 辅助 ----

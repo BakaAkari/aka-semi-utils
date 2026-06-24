@@ -320,7 +320,7 @@ class WatermarkFilter(FilterProcessor):
     # ------------------------------------------------------------- helpers
     def _collect_params(self, ctx: PipelineContext, img: Image.Image) -> dict:
         """把 ctx 中散落的字符串键收拢为一个局部参数 dict。"""
-        bottom_margin = ctx.getint("bottom_margin", int(img.height * 0.12))
+        bottom_margin = ctx.getint("bottom_margin", 120)
         return {
             "color": ctx.get("color", "white"),
             "delimiter_color": ctx.get("delimiter_color", "black"),
@@ -768,7 +768,8 @@ class SignatureFilter(FilterProcessor):
       若 watermark 未启用，所有 margins 都是 0 → 区域 = 整张画布。
     - **9 宫格锚点**：``{top|middle|bottom}_{left|center|right}``，共 9 种锚点。
     - **定位策略**：9 宫格锚点先确定照片主体区域内的参考点；
-      ``signature_margin_x`` / ``signature_margin_y`` 表示签名中心相对该参考点的有符号偏移。
+      ``signature_margin_x`` / ``signature_margin_y`` 表示签名边缘（left/right/top/bottom
+      锚点）或签名中心（center/middle 锚点）相对该参考点的有符号偏移。
     - **尺寸策略**：``target_w = min(area_w, area_h) * signature_size_ratio``，
       以照片主体短边为统一基准，降低 9:16 / 16:9 / 1:1 间的视觉尺寸漂移。
       高度按签名 PNG 原始宽高比等比推算；若高度超出区域，按 area_h 等比 fit。
@@ -878,8 +879,9 @@ class SignatureFilter(FilterProcessor):
             logger.warning(f"[SignatureFilter] 未知签名锚点 {anchor!r}，回退 middle_center。")
             anchor = "middle_center"
 
-        margin_x = ctx.getint("signature_margin_x", 0)
-        margin_y = ctx.getint("signature_margin_y", 0)
+        # 比例值 → 像素值：margin_x 基准为 area_w，margin_y 基准为 area_h
+        margin_x = int(float(ctx.get("signature_margin_x", 0.0) or 0.0) * area_w)
+        margin_y = int(float(ctx.get("signature_margin_y", 0.0) or 0.0) * area_h)
 
         paste_x, paste_y = self._compute_paste_xy(
             anchor=anchor,
@@ -888,10 +890,6 @@ class SignatureFilter(FilterProcessor):
             target_w=target_w, target_h=target_h,
             margin_x=margin_x, margin_y=margin_y,
         )
-
-        # 边界保护：把 paste 框 clamp 进区域
-        paste_x = max(area_left, min(paste_x, area_right - target_w))
-        paste_y = max(area_top, min(paste_y, area_bottom - target_h))
 
         canvas.alpha_composite(enhanced, (paste_x, paste_y))
         ctx.update_buffer([canvas]).save_buffer(self.name()).success()
@@ -906,37 +904,39 @@ class SignatureFilter(FilterProcessor):
         area_left: int, area_top: int,
         area_right: int, area_bottom: int,
         target_w: int, target_h: int,
-        margin_x: int, margin_y: int,
+        margin_x: float, margin_y: float,
     ) -> tuple[int, int]:
-        """根据 9 宫格参考点与中心偏移计算签名左上角粘贴坐标。
+        """根据 9 宫格参考点计算签名左上角粘贴坐标。
 
-        ``margin_x/y`` 表示签名中心相对 9 宫格参考点的有符号偏移；
-        x 正向右，y 正向下。尺寸变化时中心点保持稳定。
+        语义：
+        - 所有锚点（left/right/top/bottom/center/middle）：``margin_x/y`` 均表示签名
+          中心相对锚点参考点的偏移（像素）。修改签名大小时，中心位置保持不变，
+          签名从中心向四周缩放。
+        上游已由比例值（占 area_w/area_h 比例）换算为像素。x 正向右，y 正向下。
         """
         area_w = area_right - area_left
         area_h = area_bottom - area_top
         vertical, _, horizontal = anchor.partition("_")
 
         if horizontal == "left":
-            anchor_x = area_left
+            center_x = area_left + margin_x
+            paste_x = center_x - target_w / 2
         elif horizontal == "right":
-            anchor_x = area_right
+            center_x = area_right + margin_x
+            paste_x = center_x - target_w / 2
         else:  # center
-            anchor_x = area_left + area_w // 2
+            paste_x = area_left + area_w / 2 + margin_x - target_w / 2
 
         if vertical == "top":
-            anchor_y = area_top
+            center_y = area_top + margin_y
+            paste_y = center_y - target_h / 2
         elif vertical == "bottom":
-            anchor_y = area_bottom
+            center_y = area_bottom + margin_y
+            paste_y = center_y - target_h / 2
         else:  # middle
-            anchor_y = area_top + area_h // 2
+            paste_y = area_top + area_h / 2 + margin_y - target_h / 2
 
-        center_x = anchor_x + margin_x
-        center_y = anchor_y + margin_y
-        paste_x = center_x - target_w // 2
-        paste_y = center_y - target_h // 2
-
-        return paste_x, paste_y
+        return int(paste_x), int(paste_y)
 
     @staticmethod
     def _normalize_enhancement_strength(value: object) -> float:

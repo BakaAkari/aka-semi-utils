@@ -317,10 +317,9 @@ class TestColorSwap:
 class TestComputePasteXY:
     """直接验证 9 宫格参考点 + 签名中心偏移的粘贴坐标。
 
-    语义：
-        九宫格锚点先在照片主体区域内确定参考点；
-        margin_x/y 表示签名中心相对该参考点的有符号偏移。
-        本函数只反推左上角，不做边界 clamp。
+    语义（中心固定）：所有锚点的 margin_x/y 均表示签名中心相对锚点参考点的偏移
+    （像素）。修改签名大小时，中心位置保持不变，签名从中心向四周缩放。
+    本函数只反推左上角，不做边界 clamp。
     """
 
     AREA: ClassVar[dict] = dict(area_left=0, area_top=0, area_right=400, area_bottom=300)
@@ -331,7 +330,7 @@ class TestComputePasteXY:
         kw = {**self.AREA, **self.SIZE, **self.NO_MARGIN, **overrides}
         return SignatureFilter._compute_paste_xy(anchor=anchor, **kw)
 
-    # ---- 9 宫格参考点（偏移为 0；返回的是按签名尺寸反推的左上角）----
+    # ---- 9 宫格参考点（偏移为 0；返回签名左上角）----
     def test_top_left_no_margin(self):
         assert self._call("top_left") == (-40, -10)
 
@@ -359,18 +358,18 @@ class TestComputePasteXY:
     def test_bottom_right_no_margin(self):
         assert self._call("bottom_right") == (360, 290)
 
-    # ---- 偏移始终作用于签名中心，边缘锚点也允许负值 ----
+    # ---- 偏移始终作用于签名中心（所有锚点）----
     def test_top_left_offset_moves_center_from_reference_point(self):
         x, y = self._call("top_left", margin_x=100, margin_y=80)
-        assert (x, y) == (100 - 40, 80 - 10)
+        assert (x, y) == (60, 70)
 
     def test_bottom_right_offset_moves_center_from_reference_point(self):
         x, y = self._call("bottom_right", margin_x=-100, margin_y=-80)
-        assert (x, y) == (400 - 100 - 40, 300 - 80 - 10)
+        assert (x, y) == (260, 210)
 
     def test_negative_top_left_offset_is_not_clamped_here(self):
         x, y = self._call("top_left", margin_x=-25, margin_y=-15)
-        assert (x, y) == (-25 - 40, -15 - 10)
+        assert (x, y) == (-65, -25)
 
     def test_middle_center_with_positive_adjustment(self):
         x, y = self._call("middle_center", margin_x=30, margin_y=40)
@@ -382,12 +381,12 @@ class TestComputePasteXY:
         assert x == 200 - 30 - 40
         assert y == 150 - 40 - 10
 
-    def test_top_center_offset_moves_signature_center_on_both_axes(self):
+    def test_top_center_offset_moves_center_on_both_axes(self):
         x, y = self._call("top_center", margin_x=-18, margin_y=60)
         assert x == 200 - 18 - 40
-        assert y == 0 + 60 - 10
+        assert y == 50
 
-    def test_middle_right_offset_moves_signature_center_on_both_axes(self):
+    def test_middle_right_offset_moves_center_on_both_axes(self):
         x, y = self._call("middle_right", margin_x=-90, margin_y=-13)
         assert x == 400 - 90 - 40
         assert y == 150 - 13 - 10
@@ -400,7 +399,7 @@ class TestComputePasteXY:
             **self.SIZE, **self.NO_MARGIN,
         }
         x, y = SignatureFilter._compute_paste_xy(anchor="top_left", **kw)
-        assert (x, y) == (50 - 40, 30 - 10)
+        assert (x, y) == (10, 20)
         x, y = SignatureFilter._compute_paste_xy(anchor="bottom_right", **kw)
         assert x == 350 - 40
         assert y == 250 - 10
@@ -413,9 +412,9 @@ class TestComputePasteXY:
             "margin_x": 10, "margin_y": 5,
         }
         x, y = SignatureFilter._compute_paste_xy(anchor="top_left", **kw)
-        assert (x, y) == (50 + 10 - 40, 30 + 5 - 10)
+        assert (x, y) == (20, 25)
         x, y = SignatureFilter._compute_paste_xy(anchor="bottom_right", **kw)
-        assert (x, y) == (350 + 10 - 40, 250 + 5 - 10)
+        assert (x, y) == (320, 245)
 
 
 # ---- 实际渲染：位置落在原图区域内 -------------------------------------------
@@ -512,10 +511,10 @@ class TestSignatureRendering:
         assert abs(cx - out.width / 2) < out.width * 0.1
         assert abs(cy - out.height / 2) < out.height * 0.1
 
-    # 验证：图像内定位避开 watermark margins
+    # 验证：签名在 area 边界位置（允许溢出，由用户调整参数避免裁剪）
     def test_anchor_respects_margins(self, tmp_path):
-        """有 bottom_margin 时，bottom_right 签名应粘贴在【原图区域底部】，
-        而非画布底部（不应进入 margin 条带）。"""
+        """有 bottom_margin 时，bottom_right 签名的中心应位于 area_bottom
+        （签名可向下溢出进入 margin 条带，由用户调整 margin_y 避免）。"""
         out = self._render(
             tmp_path,
             "bottom_right",
@@ -523,11 +522,13 @@ class TestSignatureRendering:
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
-        _, _, _, ymax = bbox
-        assert ymax < 240
+        _cx, cy = _bbox_center(bbox)
+        # 签名中心在 area_bottom=240 处，可见部分因裁剪偏向左上
+        assert cy < 240 + 10
+        assert cy > 240 - 10
 
     def test_anchor_respects_top_margin(self, tmp_path):
-        """top_left 签名应在 top_margin 之下。"""
+        """top_left 签名中心应位于 area_top（签名可向上溢出进入 margin 区域）。"""
         out = self._render(
             tmp_path,
             "top_left",
@@ -535,11 +536,12 @@ class TestSignatureRendering:
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
-        _, _, ymin, _ = bbox
-        assert ymin >= 50
+        _cx, cy = _bbox_center(bbox)
+        assert cy < 50 + 10
+        assert cy > 50 - 10
 
     def test_anchor_respects_left_margin(self, tmp_path):
-        """top_left 签名应在 left_margin 之右。"""
+        """top_left 签名中心应位于 area_left（签名可向左溢出进入 margin 区域）。"""
         out = self._render(
             tmp_path,
             "top_left",
@@ -547,15 +549,16 @@ class TestSignatureRendering:
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
-        xmin, _, _, _ = bbox
-        assert xmin >= 40
+        cx, _cy = _bbox_center(bbox)
+        assert cx < 40 + 40
+        assert cx > 40 - 40
 
-    # ---- 中心偏移语义：偏移始终作用于签名中心 ----
+    # ---- 边缘锚点：偏移作用于签名边缘；中心锚点：偏移作用于签名中心 ----
     def test_top_left_offset_sets_center_when_not_clamped(self, tmp_path):
         out = self._render(
             tmp_path,
             "top_left",
-            distance={"signature_margin_x": 80, "signature_margin_y": 60},
+            distance={"signature_margin_x": 0.20, "signature_margin_y": 0.20},
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
@@ -567,7 +570,7 @@ class TestSignatureRendering:
         out = self._render(
             tmp_path,
             "bottom_right",
-            distance={"signature_margin_x": -80, "signature_margin_y": -60},
+            distance={"signature_margin_x": -0.20, "signature_margin_y": -0.20},
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
@@ -575,17 +578,23 @@ class TestSignatureRendering:
         assert abs(cx - (400 - 80)) <= 1
         assert abs(cy - (300 - 60)) <= 1
 
-    def test_edge_reference_without_inward_offset_is_clamped_into_area(self, tmp_path):
+    def test_edge_reference_without_inward_offset_overflows_area(self, tmp_path):
         out = self._render(
             tmp_path,
             "bottom_right",
-            distance={"signature_margin_x": 0, "signature_margin_y": 0},
+            distance={"signature_margin_x": 0.0, "signature_margin_y": 0.0},
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
+        # 中心固定语义：签名中心在 area_right/area_bottom，签名溢出到画面外
+        # PIL alpha_composite 自动裁剪超出画布的部分
         _, xmax, _, ymax = bbox
         assert xmax == 400 - 1
         assert ymax == 300 - 1
+        cx, cy = _bbox_center(bbox)
+        # 可见部分被裁剪到画布右/下边缘，中心偏向左上
+        assert 360 < cx < 400
+        assert 290 < cy < 300
 
     def test_middle_center_offset_is_signed_center_adjustment(self, tmp_path):
         out_no_adjust = self._render(tmp_path, "middle_center")
@@ -596,7 +605,7 @@ class TestSignatureRendering:
         out_with_adjust = self._render(
             tmp_path,
             "middle_center",
-            distance={"signature_margin_x": 40, "signature_margin_y": -30},
+            distance={"signature_margin_x": 0.10, "signature_margin_y": -0.10},
         )
         bbox_with = _find_black_bbox(out_with_adjust)
         assert bbox_with is not None
@@ -609,13 +618,13 @@ class TestSignatureRendering:
         out = self._render(
             tmp_path,
             "top_center",
-            distance={"signature_margin_x": -20, "signature_margin_y": 40},
+            distance={"signature_margin_x": -0.05, "signature_margin_y": 0.1333},
         )
         bbox = _find_black_bbox(out)
         assert bbox is not None
         x_center, y_center = _bbox_center(bbox)
         assert abs(x_center - (400 / 2 - 20)) <= 1
-        assert abs(y_center - 40) <= 1
+        assert abs(y_center - 40) <= 2
 
     def test_visual_center_stays_fixed_when_size_changes_from_middle_center(self, tmp_path):
         expected_center = (400 / 2 + 45, 300 / 2 - 35)
@@ -625,7 +634,7 @@ class TestSignatureRendering:
                 tmp_path,
                 "middle_center",
                 size_ratio=ratio,
-                distance={"signature_margin_x": 45, "signature_margin_y": -35},
+                distance={"signature_margin_x": 0.1125, "signature_margin_y": -0.1167},
             )
             bbox = _find_black_bbox(out)
             assert bbox is not None
@@ -640,12 +649,12 @@ class TestSignatureRendering:
     def test_visual_center_stays_fixed_when_size_changes_from_top_left(self, tmp_path):
         expected_center = (120, 90)
         centers = []
-        for ratio in (0.05, 0.20):
+        for ratio in (0.05, 0.10):
             out = self._render(
                 tmp_path,
                 "top_left",
                 size_ratio=ratio,
-                distance={"signature_margin_x": 120, "signature_margin_y": 90},
+                distance={"signature_margin_x": 0.30, "signature_margin_y": 0.30},
             )
             bbox = _find_black_bbox(out)
             assert bbox is not None
@@ -1153,8 +1162,8 @@ class TestSignatureConfigBuild:
             signature_enhancement_strength=overrides.get("enhancement_strength", 50),
             signature_anchor=overrides.get("anchor", "bottom_right"),
             signature_size_ratio=overrides.get("size_ratio", 0.20),
-            signature_margin_x=overrides.get("margin_x", 0),
-            signature_margin_y=overrides.get("margin_y", 0),
+            signature_margin_x=overrides.get("margin_x", 0.0),
+            signature_margin_y=overrides.get("margin_y", 0.0),
         )
         state.set_advanced_config(cfg)
         return state
@@ -1182,8 +1191,8 @@ class TestSignatureConfigBuild:
             enhancement_strength=80,
             anchor="top_center",
             size_ratio=0.3,
-            margin_x=15,
-            margin_y=25,
+            margin_x=0.15,
+            margin_y=0.25,
         )
         out = _build_signature_config(state)
         assert out["signature_enabled"] is True
@@ -1194,8 +1203,8 @@ class TestSignatureConfigBuild:
         assert out["signature_enhancement_strength"] == 80
         assert out["signature_anchor"] == "top_center"
         assert out["signature_size_ratio"] == 0.3
-        assert out["signature_margin_x"] == 15
-        assert out["signature_margin_y"] == 25
+        assert out["signature_margin_x"] == 0.15
+        assert out["signature_margin_y"] == 0.25
         # Phase 22：旧字段 height_ratio / scale 都不应出现
         assert "signature_height_ratio" not in out
         assert "signature_scale" not in out
