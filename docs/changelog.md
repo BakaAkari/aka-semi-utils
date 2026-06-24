@@ -6,6 +6,8 @@
 
 ## Unreleased
 
+## 2.1.9 - 2026-06-24
+
 ### Changed
 
 - Phase 28：字号系统从固定像素（px）全面重构为相对比例（占图片短边比例）。
@@ -13,11 +15,20 @@
   - 全局角字号 `corner_text_height_px`（int，px）→ `corner_text_ratio`（float，比例），高级面板改为 `QDoubleSpinBox`。
   - 处理器渲染时按 `short_edge * ratio` 计算实际像素，横竖屏字号视觉大小一致。
   - 修复误导性注释：`0 = 继承 advanced.global_font_size` 修正为实际语义。
+- 签名水印偏移从像素值改为照片主体宽/高比例，UI 使用百分比输入，横竖图定位更一致。
+- 底部水印条默认高度改为固定像素默认值，减少不同图片尺寸间的视觉漂移。
+- 将本地 `.app` 打包产物加入忽略规则，避免误提交构建产物。
 
 ### Documentation
 
 - 新增项目治理文档入口，明确 roadmap、开发流程、版本追溯和 changelog 的职责分工。
 - 将后续协作模式固化为“需求/方向 → roadmap/设计文档 → 用户确认 → 代码实现 → 自动验证 → 用户手动测试 → bug 迭代 → 文档/版本同步 → commit/tag/release”。
+- 新增项目架构与 UI/UX 分析文档，辅助后续维护与产品化迭代。
+
+### Verification
+
+- `uv run ruff check .`
+- `uv run pytest`
 
 ## 2.1.8
 
