@@ -257,12 +257,15 @@ class AppState(QObject):
     advanced_changed = pyqtSignal()             # 全局参数变更
     state_reloaded = pyqtSignal()               # 外部全量替换（load/reset/任何整组字段重置）
     progress_changed = pyqtSignal(int, str)     # 进度, 状态文字
+    preview_file_changed = pyqtSignal(str)      # 用户选中的预览文件变更（路径）
 
     def __init__(self):
         super().__init__()
 
         # 文件列表
         self.selected_files: list[str] = []
+        # 用户指定的预览文件（空 = 默认用第一张）
+        self.preview_file: str = ""
 
         # 四角配置
         self.left_top = CornerConfig()
@@ -298,6 +301,7 @@ class AppState(QObject):
         # 把所有数据类信号汇聚到 debounce 定时器
         # Phase 15：state_reloaded 是"全量替换"边沿信号，由 load/reset 主动触发；
         # 不挂 autosave 因为它本身代表"刚从磁盘读入"或"刚 reset 后立即写盘"，重复写盘多余。
+        # preview_file_changed 也不挂 autosave（会话级数据，不持久化）。
         for sig in (
             self.files_changed,
             self.output_changed,
@@ -315,6 +319,9 @@ class AppState(QObject):
         ``add_files``；外部全量替换（如配置加载、reset）应通过 ``set_files``。
         """
         self.selected_files = list(paths)
+        # 文件列表重置时，预览文件也重置（如果当前预览不在新列表中）
+        if self.preview_file and self.preview_file not in self.selected_files:
+            self.preview_file = ""
         self.files_changed.emit(self.selected_files)
 
     def add_files(self, paths: list[str]):
@@ -325,13 +332,26 @@ class AppState(QObject):
     def remove_file(self, index: int):
         """删除指定索引的图片。"""
         if 0 <= index < len(self.selected_files):
+            removed = self.selected_files[index]
             del self.selected_files[index]
+            if self.preview_file == removed:
+                self.preview_file = ""
+                self.preview_file_changed.emit("")
             self.files_changed.emit(self.selected_files)
 
     def clear_files(self):
         """清空所有图片。"""
         self.selected_files = []
+        self.preview_file = ""
+        self.preview_file_changed.emit("")
         self.files_changed.emit(self.selected_files)
+
+    def set_preview_file(self, path: str):
+        """设置用户指定的预览文件。"""
+        if self.preview_file == path:
+            return
+        self.preview_file = path
+        self.preview_file_changed.emit(path)
 
     # ---- 输出配置 ----
     def set_output(self, path: str, override: bool):

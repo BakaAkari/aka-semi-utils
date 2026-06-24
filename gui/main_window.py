@@ -247,6 +247,8 @@ class MainWindow(QMainWindow):
         self.app_state.files_changed.connect(self._on_state_files_changed)
         self.app_state.output_changed.connect(self._on_state_output_changed)
         self.app_state.progress_changed.connect(self._on_progress_changed)
+        # 连接缩略图选中 → 预览文件切换
+        self.thumb_container.file_selected.connect(self._on_thumb_selected)
 
     def _toggle_preview(self) -> None:
         visible = not self.preview_sidebar.isVisible()
@@ -272,6 +274,10 @@ class MainWindow(QMainWindow):
             self.resize(new_w, self.height())
     
     # ---- 事件处理 ----
+    def _on_thumb_selected(self, index: int, path: str) -> None:
+        """缩略图左键选中 → 切换预览文件。"""
+        self.app_state.set_preview_file(path)
+
     def _on_files_added(self, paths):
         self.app_state.add_files(paths)
     

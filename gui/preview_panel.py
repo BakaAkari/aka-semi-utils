@@ -162,6 +162,7 @@ class PreviewPanel(QWidget):
         state.files_changed.connect(self._schedule_render)
         state.watermark_changed.connect(self._schedule_render)
         state.advanced_changed.connect(self._schedule_render)
+        state.preview_file_changed.connect(self._schedule_render)
         # 模板切换 / 自定义文本 / logo 都已由 watermark_changed 涵盖
 
         self._set_status("（预览已折叠）")
@@ -245,7 +246,12 @@ class PreviewPanel(QWidget):
 
     def _do_render(self) -> None:
         """实际触发渲染（取消旧线程，开新线程）。"""
-        if not self.state.selected_files:
+        # 确定预览源文件：用户选中的 > 第一张
+        if self.state.preview_file and self.state.preview_file in self.state.selected_files:
+            preview_file = self.state.preview_file
+        elif self.state.selected_files:
+            preview_file = self.state.selected_files[0]
+        else:
             self._set_status("（尚未选择图片）")
             self.image_label.clear()
             self.image_label.setText("（无预览）")
@@ -268,15 +274,15 @@ class PreviewPanel(QWidget):
             self._set_status(f"配置组装失败: {e}")
             return
 
-        first_file = self.state.selected_files[0]
-        if not Path(first_file).exists():
-            self._set_status(f"文件不存在: {first_file}")
+        if not Path(preview_file).exists():
+            self._set_status(f"文件不存在: {preview_file}")
             return
 
         self._set_status("渲染中…")
+        self._current_preview_file = preview_file
 
         thread = PreviewRenderThread(
-            file_path=first_file,
+            file_path=preview_file,
             processors_template=processors,
             max_size=self.PREVIEW_MAX_SIZE,
             parent=self,
@@ -308,7 +314,11 @@ class PreviewPanel(QWidget):
         )
         self.image_label.setPixmap(scaled)
         self._original_pix = pixmap  # 保留原图用于 resize
-        self._set_status(f"已渲染 · {pixmap.width()}×{pixmap.height()}")
+        # 显示当前预览文件名（截短避免溢出）
+        name = Path(self._current_preview_file).name if getattr(self, '_current_preview_file', None) else ""
+        if len(name) > 20:
+            name = name[:17] + "…"
+        self._set_status(f"已渲染 · {name} · {pixmap.width()}×{pixmap.height()}")
 
     def _on_preview_failed(self, reason: str) -> None:
         self.image_label.clear()

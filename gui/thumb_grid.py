@@ -83,11 +83,13 @@ class ThumbContainer(QWidget):
     file_added = pyqtSignal(list)      # 新增文件路径列表
     file_removed = pyqtSignal(int)   # 删除指定索引
     files_cleared = pyqtSignal()      # 清空所有
+    file_selected = pyqtSignal(int, str)  # 用户左键选中某张图片（index, path）
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.files: list[str] = []
         self.thumb_labels: list[QLabel] = []
+        self._selected_index: int = -1   # 当前选中预览的索引，-1 = 未选中
         # Phase 9：使用 Optional 注解 + Qt 父子链管理 ThumbLoaderThread 生命周期
         self.loader_thread: ThumbLoaderThread | None = None
 
@@ -210,26 +212,21 @@ class ThumbContainer(QWidget):
             thumb = QLabel()
             thumb.setFixedSize(self.THUMB_W, self.THUMB_H)
             thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            thumb.setCursor(Qt.CursorShape.PointingHandCursor)
 
             is_last_slot = (i == max_display - 1) and overflow
             if is_last_slot:
                 # 第 5 格作为 +N 占位，包含被覆盖的第 5 张本身
                 remain = len(self.files) - (max_display - 1)
                 thumb.setText(f"+{remain}")
-                thumb.setStyleSheet("""
-                    QLabel {
-                        border: 1px solid #333333;
-                        border-radius: 4px;
-                        color: #999999;
-                        font-size: 18px;
-                        font-weight: bold;
-                        background-color: #1E1E1E;
-                    }
-                """)
+                thumb.setStyleSheet(self._thumb_style(selected=False, is_placeholder=True))
                 thumb.setToolTip(f"还有 {remain} 张未展示（共 {len(self.files)} 张）")
             else:
-                thumb.setStyleSheet("border: 1px solid #333333; border-radius: 4px;")
+                is_selected = (i == self._selected_index)
+                thumb.setStyleSheet(self._thumb_style(selected=is_selected))
                 thumb.setToolTip(Path(path).name)
+                # 左键选中预览
+                thumb.mousePressEvent = lambda event, idx=i, p=path: self._on_thumb_clicked(event, idx, p)
                 # 仅真实缩略图支持右键删除
                 thumb.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 thumb.customContextMenuRequested.connect(
@@ -260,6 +257,57 @@ class ThumbContainer(QWidget):
             thread.finished.connect(thread.deleteLater)
             self.loader_thread = thread
             thread.start()
+
+    def _thumb_style(self, selected: bool = False, is_placeholder: bool = False) -> str:
+        """生成缩略图 QLabel 的样式表。"""
+        if is_placeholder:
+            return """
+                QLabel {
+                    border: 1px solid #333333;
+                    border-radius: 4px;
+                    color: #999999;
+                    font-size: 18px;
+                    font-weight: bold;
+                    background-color: #1E1E1E;
+                }
+            """
+        if selected:
+            return """
+                QLabel {
+                    border: 2px solid #4A9EFF;
+                    border-radius: 4px;
+                    background-color: #1A2A3A;
+                }
+            """
+        return """
+            QLabel {
+                border: 1px solid #333333;
+                border-radius: 4px;
+            }
+            QLabel:hover {
+                border: 1px solid #666666;
+            }
+        """
+
+    def _on_thumb_clicked(self, event, index: int, path: str) -> None:
+        """缩略图左键点击 — 选中为预览源。"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._select_thumbnail(index)
+            self.file_selected.emit(index, path)
+
+    def _select_thumbnail(self, index: int) -> None:
+        """更新选中状态的高亮边框。"""
+        prev = self._selected_index
+        self._selected_index = index
+        # 刷新旧选中和新选中的样式
+        if 0 <= prev < len(self.thumb_labels) and prev != index:
+            label = self.thumb_labels[prev]
+            if not label.text().startswith("+"):
+                label.setStyleSheet(self._thumb_style(selected=False))
+        if 0 <= index < len(self.thumb_labels):
+            label = self.thumb_labels[index]
+            if not label.text().startswith("+"):
+                label.setStyleSheet(self._thumb_style(selected=True))
 
     def _build_add_card(self) -> QToolButton:
         """构建第 6 格的 ➕ 追加卡（QToolButton 支持 :hover 伪类与无障碍焦点）。"""
