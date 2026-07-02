@@ -1,0 +1,24 @@
+[Unit]
+Description=aka-semi-utils Web API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/aka-semi-utils-web
+EnvironmentFile=/etc/aka-semi-utils-web.env
+ExecStart=/opt/aka-semi-utils-web/.venv/bin/uvicorn web_api.main:app --host 127.0.0.1 --port 2189 --workers 1 --limit-concurrency 8 --timeout-keep-alive 5 --no-server-header
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aka-semi-utils-web
+MemoryMax=1200M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

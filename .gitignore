@@ -21,6 +21,14 @@ dist/
 *.spec.bak
 *.app/
 
+# ===== Web 前端 =====
+web_frontend/node_modules/
+web_frontend/dist/
+web_frontend/*.tsbuildinfo
+web_frontend/vite.config.js
+web_frontend/vite.config.d.ts
+web_frontend/public/fonts/
+
 # ===== 虚拟环境 =====
 .venv/
 venv/

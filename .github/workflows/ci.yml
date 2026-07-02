@@ -1,81 +1,40 @@
-name: CI
+name: Web CI
 
 on:
   push:
-    branches: ["main", "master", "develop"]
+    branches: [main, feat/web-mvp]
   pull_request:
-    branches: ["main", "master", "develop"]
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint (ruff)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - name: Set up Python 3.13
-        run: uv python install 3.13
-      - name: Sync deps
-        run: uv sync --all-extras --dev
-      - name: Run ruff
-        run: uv run ruff check .
-
-  typecheck:
-    name: Type check (mypy)
+  python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+      - run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
       - run: uv python install 3.13
-      - run: uv sync --all-extras --dev
-      - name: Run mypy (warn-only)
-        run: uv run mypy core processor || true
+      - run: uv sync --frozen --dev
+      - run: uv run ruff check .
+      - run: uv run pytest
 
-  test:
-    name: Test (pytest) — ${{ matrix.os }}
-    env:
-      QT_QPA_PLATFORM: offscreen
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web_frontend
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install system deps (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libimage-exiftool-perl libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
-
-      - name: Install exiftool (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install exiftool
-
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
         with:
-          enable-cache: true
-
-      - run: uv python install 3.13
-      - run: uv sync --all-extras --dev
-
-      - name: Run pytest
-        run: uv run pytest --cov --cov-report=xml -v
-
-      - name: Upload coverage
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-xml
-          path: coverage.xml
-          if-no-files-found: ignore
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web_frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build

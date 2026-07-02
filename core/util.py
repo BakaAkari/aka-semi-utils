@@ -6,8 +6,10 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from functools import wraps
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Template
 from PIL import Image
@@ -108,9 +110,166 @@ def _parse_exiftool_block(block: str) -> dict:
     return exif_dict
 
 
+def _get_exif_pillow(path: str | Path) -> dict:
+    """Fallback EXIF reader using Pillow when exiftool is unavailable.
+
+    Maps Pillow EXIF tag names to the exiftool-style keys expected by Jinja
+    templates so the watermark processor works even without exiftool installed.
+    """
+    try:
+        from PIL import ExifTags, Image
+        from PIL.ExifTags import IFD
+    except ImportError:  # pragma: no cover
+        print("DEBUG: Pillow import failed")
+        return {}
+
+    try:
+        with Image.open(path) as img:
+            exif: dict[str, str] = {
+                "ImageWidth": str(img.width),
+                "ImageHeight": str(img.height),
+            }
+
+            # --- read EXIF via Pillow 9.0+ API (preferred) ---
+            pil_exif = None
+            if hasattr(img, "getexif"):
+                with suppress(Exception):
+                    pil_exif = img.getexif()
+            if pil_exif is None and hasattr(img, "_getexif"):
+                with suppress(Exception):
+                    pil_exif = img._getexif()
+
+            if not pil_exif:
+                return exif
+
+            # Build tag_id → name mapping for both IFD0 and ExifIFD
+            tag_names: dict[int, str] = {}
+            for tag_id, tag_name in ExifTags.TAGS.items():
+                tag_names[tag_id] = tag_name
+            # ExifIFD tags are also in TAGS but may overlap; last-write wins
+            # (Pillow 9.0+ uses ExifTags.TAGS for all, so this is fine)
+
+            def _set(tag_id: int, value: Any) -> None:
+                name = tag_names.get(tag_id)
+                if not name:
+                    return
+                if isinstance(value, bytes):
+                    try:
+                        value = value.decode("utf-8", errors="ignore")
+                    except Exception:
+                        value = str(value)
+                elif isinstance(value, tuple) and len(value) == 2:
+                    numerator, denominator = value
+                    if denominator == 0:
+                        value = str(value)
+                    else:
+                        ratio = numerator / denominator
+                        if name in ("FocalLength", "FocalLengthIn35mmFilm"):
+                            value = f"{ratio:.0f}mm"
+                        elif name in ("FNumber", "ApertureValue"):
+                            if name == "ApertureValue":
+                                # APEX value: convert to f-number = 2^APEX
+                                f_num = 2 ** ratio
+                                value = str(round(f_num)) if abs(f_num - round(f_num)) < 0.1 else f"{f_num:.1f}"
+                            else:
+                                value = str(int(ratio)) if ratio == int(ratio) else f"{ratio:.1f}"
+                        elif name in ("ExposureTime", "ShutterSpeed"):
+                            if ratio < 1:
+                                reciprocal = int(1 / ratio + 0.5)
+                                value = f"1/{reciprocal}"
+                            else:
+                                value = str(int(ratio)) if ratio == int(ratio) else f"{ratio:.1f}"
+                        elif name == "ShutterSpeedValue":
+                            # APEX value: t = 2^(-APEX)
+                            if ratio > 0:
+                                shutter = 2 ** ratio
+                                value = f"1/{int(shutter + 0.5)}"
+                            else:
+                                value = f"{2 ** (-ratio):.1f}"
+                        else:
+                            value = str(value)
+                elif not isinstance(value, str):
+                    value = str(value)
+                # Strip null bytes and whitespace
+                exif[name] = value.strip().strip("\x00")
+
+            # Read IFD0 tags
+            for tag_id, value in pil_exif.items():
+                _set(tag_id, value)
+
+            # Read ExifIFD sub-tags (FocalLength, ISO, etc.)
+            if hasattr(pil_exif, "get_ifd"):
+                try:
+                    exif_ifd = pil_exif.get_ifd(IFD.Exif)
+                    if exif_ifd:
+                        for tag_id, value in exif_ifd.items():
+                            _set(tag_id, value)
+                except Exception:
+                    pass
+
+            # --- map Pillow names → exiftool-style keys (Jinja compatibility) ---
+            # Camera model
+            if "Model" in exif and "CameraModelName" not in exif:
+                exif["CameraModelName"] = exif["Model"]
+
+            # Focal length (prefer 35mm equivalent, fallback to raw)
+            if "FocalLengthIn35mmFilm" in exif:
+                exif["FocalLengthIn35mmFormat"] = exif["FocalLengthIn35mmFilm"]
+            elif "FocalLength" in exif and "FocalLengthIn35mmFormat" not in exif:
+                exif["FocalLengthIn35mmFormat"] = exif["FocalLength"]
+
+            # Aperture / F-number: always use FNumber (rational) over ApertureValue (APEX)
+            if "FNumber" in exif:
+                exif["ApertureValue"] = exif["FNumber"]
+            elif "ApertureValue" in exif:
+                exif["FNumber"] = exif["ApertureValue"]
+
+            # Shutter speed: always use ExposureTime (seconds) over ShutterSpeedValue (APEX)
+            if "ExposureTime" in exif:
+                exif["ShutterSpeed"] = exif["ExposureTime"]
+            elif "ShutterSpeedValue" in exif:
+                exif["ShutterSpeed"] = exif["ShutterSpeedValue"]
+
+            # ISO
+            if "ISOSpeedRatings" in exif and "ISO" not in exif:
+                exif["ISO"] = exif["ISOSpeedRatings"]
+            if "PhotographicSensitivity" in exif and "ISO" not in exif:
+                exif["ISO"] = exif["PhotographicSensitivity"]
+
+            # DateTime
+            if "DateTimeOriginal" not in exif and "DateTime" in exif:
+                exif["DateTimeOriginal"] = exif["DateTime"]
+            if "DateTimeOriginal" not in exif and "DateTimeDigitized" in exif:
+                exif["DateTimeOriginal"] = exif["DateTimeDigitized"]
+
+            # GPS
+            if hasattr(pil_exif, "get_ifd"):
+                try:
+                    gps_ifd = pil_exif.get_ifd(IFD.GPSInfo)
+                    if gps_ifd:
+                        for tag_id, value in gps_ifd.items():
+                            gps_name = ExifTags.GPSTAGS.get(tag_id, str(tag_id))
+                            if isinstance(value, bytes):
+                                try:
+                                    value = value.decode("utf-8", errors="ignore").strip("\x00")
+                                except Exception:
+                                    value = str(value)
+                            elif not isinstance(value, str):
+                                value = str(value)
+                            exif[gps_name] = value.strip()
+                except Exception:
+                    pass
+
+            return exif
+    except Exception as e:
+        logger.error(f"Pillow EXIF fallback error for {path}: {e}")
+        return {}
+
+
 def get_exif(path) -> dict:
     """
     获取exif信息（Phase 5.2：自动 mtime 失效缓存）。
+    当 exiftool 不可用时，自动回退到 Pillow EXIF 读取。
 
     :param path: 照片路径
     :return: exif信息
@@ -121,18 +280,26 @@ def get_exif(path) -> dict:
         if cached is not None:
             return cached
 
+    # Try exiftool first (best quality, most comprehensive)
     try:
         output_bytes = subprocess.check_output(
-            [EXIFTOOL_PATH, '-d', '%Y-%m-%d %H:%M:%S%3f%z', str(path)]
+            [EXIFTOOL_PATH, "-d", "%Y-%m-%d %H:%M:%S%3f%z", str(path)]
         )
-        output = output_bytes.decode('utf-8', errors='ignore')
+        output = output_bytes.decode("utf-8", errors="ignore")
         parsed = _parse_exiftool_block(output)
         if cache_key is not None:
             _exif_cache_put(cache_key, parsed)
         return parsed
+    except FileNotFoundError:
+        logger.warning(f"exiftool not found at {EXIFTOOL_PATH}, falling back to Pillow EXIF")
     except Exception as e:
-        logger.error(f'get_exif error: {path} : {e}')
-        return {}
+        logger.warning(f"exiftool failed for {path}: {e}, falling back to Pillow EXIF")
+
+    # Fallback to Pillow EXIF (works without external exiftool binary)
+    parsed = _get_exif_pillow(path)
+    if cache_key is not None and parsed:
+        _exif_cache_put(cache_key, parsed)
+    return parsed
 
 
 def get_exif_batch(paths: list[str]) -> dict[str, dict]:

@@ -484,10 +484,12 @@ class PipelineEngine:
 
         cfg = load_config()
         first_image = last_node.get_buffer()[0]
+        quality = last_node.getint("quality", cfg.getint("DEFAULT", "quality"))
+        subsampling = last_node.getint("subsampling", cfg.getint("DEFAULT", "subsampling"))
         first_image.convert("RGB").save(
             self.output_path,
-            quality=cfg.getint("DEFAULT", "quality"),
-            subsampling=cfg.getint("DEFAULT", "subsampling"),
+            quality=quality,
+            subsampling=subsampling,
         )
         logger.success(f"Generated new image: {self.output_path}")
 

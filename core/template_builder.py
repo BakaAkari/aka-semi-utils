@@ -11,6 +11,7 @@ from jinja2 import Template
 
 from core.config_loader import FONTS_DIR, get_custom_text, get_logo_path
 from core.jinja2renders import auto_logo, vh, vw
+from shared.render_values import LiteralText
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +83,9 @@ def _build_source_segment(source: str, font: str, color: str, config_ini, corner
         return None
 
     # 1. 走注册表（多数标准 EXIF 字段）
-    try:
-        from gui.field_registry import get_default_registry
-    except ImportError:  # pragma: no cover — gui 不可用时退化
-        registry = None
-    else:
-        registry = get_default_registry()
+    from shared.field_registry import get_default_registry
+
+    registry = get_default_registry()
 
     if registry is not None:
         fdef = registry.get_by_source(source) or registry.get(source)
@@ -157,6 +155,8 @@ def _build_corner_multi(corner: str, sources: list[str], separator: str, font: s
 
 def _render_value(value, context, template_globals):
     """递归渲染值中的 Jinja2 模板表达式。仅对包含模板语法的字符串进行渲染。"""
+    if isinstance(value, LiteralText):
+        return str(value)
     if isinstance(value, str):
         # 只有包含 Jinja2 模板标记的字符串才进行渲染
         if "{{" in value or "{%" in value:
