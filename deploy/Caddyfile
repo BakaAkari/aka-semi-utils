@@ -1,0 +1,25 @@
+watermark.baka-akari.icu {
+    encode zstd gzip
+
+    request_body {
+        max_size 16MB
+    }
+
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'"
+        -Server
+    }
+
+    handle /api/* {
+        reverse_proxy 127.0.0.1:2189
+    }
+
+    handle {
+        root * /var/www/aka-semi-utils-web
+        try_files {path} /index.html
+        file_server
+    }
+}

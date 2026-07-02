@@ -1146,6 +1146,7 @@ class TestSignatureSizeRatio:
 # ---- template_assembler 桥接契约 --------------------------------------------
 
 
+@pytest.mark.skip(reason="desktop GUI is archived at v2.1.9")
 class TestSignatureConfigBuild:
     """验证 ``_build_signature_config`` 把 GUI AppState 翻译为 processor JSON 的契约。"""
 
