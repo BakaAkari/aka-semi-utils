@@ -1,4 +1,4 @@
-watermark.baka-akari.icu {
+photo.baka-akari.icu {
     encode zstd gzip
 
     request_body {

@@ -115,7 +115,7 @@ POST /api/process
 推荐使用独立子域名，降低子路径、缓存与安全策略的耦合：
 
 ```text
-https://watermark.baka-akari.icu/
+https://photo.baka-akari.icu/
 ```
 
 服务器路径：

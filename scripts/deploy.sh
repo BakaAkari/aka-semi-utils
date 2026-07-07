@@ -58,7 +58,7 @@ if [ -n "${REMOTE_HOST}" ]; then
     ssh "${REMOTE_HOST}" "curl -s http://127.0.0.1:2189/api/health" || err "健康检查失败"
 
     log "✅ 部署完成！"
-    log "访问: https://watermark.baka-akari.icu/semi-utils/"
+    log "访问: https://photo.baka-akari.icu/semi-utils/"
 else
     log "未指定远程主机，仅生成本地部署配置。"
     log "配置文件位置:"
