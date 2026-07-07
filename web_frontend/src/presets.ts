@@ -13,23 +13,19 @@ function base(): WatermarkConfig {
 
 export const watermarkPresets: WatermarkPreset[] = [
   {
-    id: 'standard-exif',
-    name: '标准 EXIF 水印',
-    description: '左上自定义标题，右下相机/焦距/光圈/快门/ISO，适合常规摄影分享。',
+    id: 'default',
+    name: '默认排版',
+    description: '左上厂商品牌 + 相机型号，左下焦距   光圈   快门   ISO，右侧自动 Logo。经典简洁的摄影水印风格。',
     config: {
       ...base(),
       corners: {
-        left_top: { chips: [{ field_id: 'custom_text', custom_text: 'PHOTO' }], separator: ' ', font_size_ratio: 0.04 },
-        left_bottom: { chips: [{ field_id: 'datetime' }], separator: ' ', font_size_ratio: 0.032 },
-        right_top: { chips: [{ field_id: 'lens_model' }], separator: ' ', font_size_ratio: 0.032 },
-        right_bottom: {
-          chips: [{ field_id: 'camera_model' }, { field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'shutter' }, { field_id: 'iso' }],
-          separator: '   ',
-          font_size_ratio: 0.032
-        }
+        left_top: { chips: [{ field_id: 'make' }, { field_id: 'camera_model' }], separator: ' ', font_size_ratio: 0.055 },
+        left_bottom: { chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'shutter' }, { field_id: 'iso' }], separator: '   ', font_size_ratio: 0.04 },
+        right_top: { chips: [], separator: ' ', font_size_ratio: 0.035 },
+        right_bottom: { chips: [], separator: ' ', font_size_ratio: 0.035 }
       },
       logo: { enabled: 'auto', position: 'right', color: '#D8D8D6', custom_path: '' },
-      advanced: { ...base().advanced, footer_height_px: 140, logo_height_px: 0, global_color: '#242424' }
+      advanced: { ...base().advanced, footer_height_px: 0, logo_height_px: 0, global_color: '#222222' }
     }
   },
   {
