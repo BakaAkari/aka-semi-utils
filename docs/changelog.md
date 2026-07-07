@@ -4,12 +4,43 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 `docs/versioning.md`。
 
-## Unreleased
+## Unreleased — Web MVP 开发中
+
+### Added
+
+- **Web 端 MVP 架构**：React 19 + Vite + TypeScript 前端 + FastAPI 后端。
+  - 新增 `web_frontend/`：React 应用，6 个配置 Tab、4 个预设模板、批量处理入口。
+  - 新增 `web_api/`：FastAPI 后端，提供 `/api/health`、`/api/preview`、`/api/process`、`/api/upload-resource`。
+  - 新增 `shared/`：纯 Python 共享层，`watermark_schema.py`、`field_registry.py`、`processor_assembler.py`。
+- **前端 UI**：macOS/iOS 玻璃质感设计系统。
+  - 玻璃面板（`backdrop-filter: blur(24px)`）、微动效、排版层级。
+  - Toast 反馈系统、进度条、骨架屏。
+  - 响应式布局，支持桌面端和窄屏。
+- **后端处理管线**：复用现有 `processor/core.py`，通过 `web_api/processing.py` 桥接。
+  - 预览模式：限制最大像素，快速返回。
+  - 正式处理：完整水印渲染，返回下载 URL。
+- **Logo / 签名上传**：`POST /api/upload-resource`，随机文件名存储，前端通过 `/api/files/` 访问。
+- **EXIF 读取 Pillow fallback**：当 `exiftool` 不可用时，自动回退到 Pillow 读取 EXIF。
+  - 完整映射 Pillow 键名 → exiftool 格式（焦距 → `50mm`、光圈 → `f/2.8`、快门 → `1/80s`）。
+  - 修复有理数格式化和 null 字节残留问题。
+- **部署配置**：
+  - `scripts/aka-semi-utils-web.service`：systemd 服务配置，含安全限制。
+  - `scripts/semi-utils.nginx.conf`：nginx 反向代理配置。
+  - `scripts/deploy.sh`：一键部署脚本（本地构建 + 远程 rsync + 服务重启）。
 
 ### Changed
 
-- 桌面版冻结在 `v2.1.9`，并归档至 `archive/desktop-v2`。
-- 项目主线转向 React/Vite + FastAPI Web 产品及腾讯云公开部署。
+- **项目主线转向 Web**：桌面版冻结在 `v2.1.9`，归档至 `archive/desktop-v2` 分支。
+- **默认水印排版**：左上 → 厂商品牌 + 相机型号；左下 → 焦距 | 光圈 | 快门 | ISO；Logo → 右侧。
+- **前端构建产物**：`web_frontend/dist/` 自动挂载到 `/semi-utils/`，SPA fallback 支持。
+- **配置 schema**：`WatermarkConfig` 新增 `signature` 一级字段，同时保留 `AdvancedConfig` 中的 legacy 字段向后兼容。
+
+### Fixed
+
+- **上传无反应**：修复 `removeFile` 索引越界、`label` 点击冲突、不支持格式静默过滤、重复选择相同文件不触发。
+- **签名配置被忽略**：`web_api/schemas.py` 遗漏 `signature` 参数，导致前端签名配置被后端忽略。
+- **EXIF 完全无法读取**：`exiftool` 缺失时 `get_exif()` 直接返回 `{}`；Pillow fallback 中 `Any` 未导入导致 `NameError`。
+- **预设布局**：描述文字换行、容器高度增加、卡片最小宽度限制。
 
 ### Security
 
@@ -17,6 +48,7 @@
 - Web 配置改为严格类型、范围和枚举校验。
 - 自定义 Logo/签名只接受服务端资源 ID，禁止任意本地路径。
 - 上传、输出和临时资源增加大小、像素、并发和自动过期保护。
+- systemd service 配置 `NoNewPrivileges=true`、`ProtectSystem=strict`。
 
 ## 2.1.9 - 2026-06-24
 
@@ -34,7 +66,7 @@
 ### Documentation
 
 - 新增项目治理文档入口，明确 roadmap、开发流程、版本追溯和 changelog 的职责分工。
-- 将后续协作模式固化为“需求/方向 → roadmap/设计文档 → 用户确认 → 代码实现 → 自动验证 → 用户手动测试 → bug 迭代 → 文档/版本同步 → commit/tag/release”。
+- 将后续协作模式固化为"需求/方向 → roadmap/设计文档 → 用户确认 → 代码实现 → 自动验证 → 用户手动测试 → bug 迭代 → 文档/版本同步 → commit/tag/release"。
 - 新增项目架构与 UI/UX 分析文档，辅助后续维护与产品化迭代。
 
 ### Verification

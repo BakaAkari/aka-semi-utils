@@ -46,7 +46,7 @@ _FIELDS: list[FieldDef] = [
     FieldDef(
         field_id="focal_length",
         label_zh="焦距",
-        jinja_template="{{exif.FocalLengthIn35mmFormat|replace(' ', '')|default('-')}}",
+        jinja_template="{{exif.FocalLengthIn35mmFormat|replace(' ', '')|replace('mm', '')|default('-')}}mm",
         source_id="exif:FocalLengthIn35mmFormat",
         category="exif",
     ),

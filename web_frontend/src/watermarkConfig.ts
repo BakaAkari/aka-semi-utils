@@ -122,12 +122,12 @@ export function createDefaultWatermarkConfig(): WatermarkConfig {
       left_top: {
         chips: [{ field_id: 'make' }, { field_id: 'camera_model' }],
         separator: ' ',
-        font_size_ratio: 0.045
+        font_size_ratio: 0.055
       },
       left_bottom: {
         chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'shutter' }, { field_id: 'iso' }],
-        separator: '|',
-        font_size_ratio: 0.035
+        separator: '   ',
+        font_size_ratio: 0.04
       },
       right_top: {
         chips: [],
@@ -158,7 +158,7 @@ export function createDefaultWatermarkConfig(): WatermarkConfig {
       size_ratio: 0.20
     },
     advanced: {
-      footer_height_px: 120,
+      footer_height_px: 0,
       logo_height_px: 0,
       corner_text_ratio: 0,
       global_font: 'NotoSansCJKsc-Bold.otf',

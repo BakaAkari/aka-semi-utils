@@ -140,6 +140,15 @@ https://watermark.baka-akari.icu/
 
 ## 开发阶段
 
+| 阶段 | 目标 | 状态 | 说明 |
+|------|------|------|------|
+| 1 | 文档与边界：写入本设计文档，明确 shared / gui / web_api / web_frontend 边界。 | ✅ 已完成 | `docs/web_mvp_design.md` 已编写，桌面版冻结策略已确定。 |
+| 2 | 一致性核心：抽出 shared schema、field registry、processor assembler，并让桌面端继续通过共享 assembler 生成 processor JSON。 | ✅ 已完成 | `shared/` 目录已创建，`watermark_schema.py`、`field_registry.py`、`processor_assembler.py` 已实现。 |
+| 3 | 后端 MVP：实现 health、preview、process，并用真实图片跑通。 | ✅ 已完成 | API：`/api/health`、`/api/preview`、`/api/process`、`/api/upload-resource`。输入校验、TTL 清理、大小/像素限制已实现。 |
+| 4 | 前端 MVP：实现上传、配置、预览、下载。 | ✅ 已完成 | React 19 + Vite 前端，6 个配置 Tab，4 个预设，批量处理入口，玻璃质感 UI。 |
+| 5 | 腾讯云部署：systemd + nginx 路由 + 公网验证。 | 🔄 进行中 | 部署脚本和配置文件已生成，待实际上线。 |
+| 6 | 产品化增强：批量 job、zip 下载、自定义资源、访问控制、HTTPS。 | 📋 计划中 | 未开始。 |
+
 1. 文档与边界：写入本设计文档，明确 shared / gui / web_api / web_frontend 边界。
 2. 一致性核心：抽出 shared schema、field registry、processor assembler，并让桌面端继续通过共享 assembler 生成 processor JSON。
 3. 后端 MVP：实现 health、preview、process，并用真实图片跑通。

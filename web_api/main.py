@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Any
+
+# Allow large file uploads (100MB) for GFX100S2 RAW files
+os.environ.setdefault("MULTIPART_MAX_FILE_SIZE", "100000000")
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse

@@ -1,7 +1,7 @@
 {
   "version": 3,
   "output": {
-    "path": "{source_dir}/logo",
+    "path": "{source_dir}/output",
     "override": true
   },
   "corners": {
@@ -16,9 +16,7 @@
           "custom_text": ""
         }
       ],
-      "fields": [
-        "相机型号"
-      ],
+      "fields": [],
       "separator": " ",
       "font_size_ratio": 0.0
     },
@@ -62,41 +60,41 @@
     "enabled": "auto",
     "position": "right",
     "color": "#D8D8D6",
-    "custom_path": "/Users/baka_akari/Downloads/20260506-133218.jpeg"
+    "custom_path": ""
   },
   "custom_text": "",
   "advanced": {
-    "global_font": "Roboto-Bold.ttf",
+    "global_font": "NotoSansCJKsc-Regular.otf",
     "global_color": "#242424",
     "corner_text_ratio": 0.0,
-    "footer_height_px": 1000,
+    "footer_height_px": 120,
     "logo_height_px": 0,
     "left_margin": 0,
     "right_margin": 0,
     "top_margin": 0,
     "bottom_margin": 0,
     "margin_color": "#FFFFFF",
-    "border_radius": 40,
-    "shadow_radius": 40,
+    "border_radius": 0,
+    "shadow_radius": 0,
     "shadow_color": "#000000",
     "quality": 95,
     "subsampling": 0,
     "blur_radius": 0,
     "ratio_enabled": false,
-    "ratio": "9:16",
+    "ratio": "3:4",
     "scale": 1.0,
     "trim_enabled": false,
     "trim_threshold": 0.0,
     "concat_direction": "vertical",
     "alignment_mode": "center",
-    "signature_enabled": true,
-    "signature_path": "/Users/baka_akari/Pictures/Akari.png",
-    "signature_enhancement": "soft_shadow",
-    "signature_enhancement_strength": 70,
-    "signature_invert_mono": true,
-    "signature_anchor": "bottom_right",
-    "signature_margin_x": -0.05,
-    "signature_margin_y": -0.12,
-    "signature_size_ratio": 0.18
+    "signature_enabled": false,
+    "signature_path": "",
+    "signature_invert_mono": false,
+    "signature_enhancement": "none",
+    "signature_enhancement_strength": 50,
+    "signature_anchor": "middle_center",
+    "signature_margin_x": 0.0,
+    "signature_margin_y": 0.0,
+    "signature_size_ratio": 0.2
   }
 }

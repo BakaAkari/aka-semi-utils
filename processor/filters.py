@@ -320,7 +320,12 @@ class WatermarkFilter(FilterProcessor):
     # ------------------------------------------------------------- helpers
     def _collect_params(self, ctx: PipelineContext, img: Image.Image) -> dict:
         """把 ctx 中散落的字符串键收拢为一个局部参数 dict。"""
-        bottom_margin = ctx.getint("bottom_margin", 120)
+        short_edge = min(img.width, img.height)
+        bottom_margin = ctx.getint("bottom_margin", 0)
+        # 如果用户没设置（0 或不存在），自动计算：短边 × 12%，最小 60px
+        if bottom_margin <= 0:
+            bottom_margin = max(60, int(short_edge * 0.12))
+
         return {
             "color": ctx.get("color", "white"),
             "delimiter_color": ctx.get("delimiter_color", "black"),
@@ -337,20 +342,22 @@ class WatermarkFilter(FilterProcessor):
     def _render_corner_texts(self, ctx: PipelineContext, params: dict) -> dict[str, Image.Image]:
         """渲染左上/左下/右上/右下四个角落的文本图。
 
-        Phase 28：支持相对比例字号（height_ratio）—
-        若 corner 配置包含 ``height_ratio``，按图片短边计算实际像素高度；
+        Phase 28+：字号联动底部白条高度 —
+        若 corner 配置包含 ``height_ratio``，按底部白条高度计算实际像素高度
+        （保证不同分辨率下字号与底部白条的比例一致，避免挤压）。
         若显式指定 ``height``（旧配置），直接沿用；
         否则用 ``bottom_margin * 0.3`` 兜底。
-        对超宽文本只记录 warning 不再 resize，保证字号在不同分辨率源图下完全一致。
         """
         img = ctx.get_buffer()[0]
-        short_edge = min(img.width, img.height)
         bottom_margin = params["bottom_margin"]
         for t_s in [ctx.get("left_top"), ctx.get("left_bottom"),
                     ctx.get("right_top"), ctx.get("right_bottom")]:
             if t_s:
                 if "height_ratio" in t_s:
-                    t_s["height"] = int(short_edge * t_s["height_ratio"])
+                    # 用户传的 ratio 是相对于短边的（如 0.055）
+                    # bottom_margin 现在也是相对于短边的（0.12）
+                    # 联动：字号 = bottom_margin * (ratio / 0.12)
+                    t_s["height"] = int(bottom_margin * t_s["height_ratio"] / 0.12)
                 elif "height" not in t_s:
                     t_s["height"] = int(bottom_margin * 0.3)
 

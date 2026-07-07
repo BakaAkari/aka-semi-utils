@@ -1,0 +1,30 @@
+[Unit]
+Description=AKA Semi-Utils Web API
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/aka-semi-utils-web
+Environment="PYTHONUNBUFFERED=1"
+Environment="AKA_SEMI_DATA_DIR=/var/lib/aka-semi-utils-web"
+Environment="AKA_SEMI_UPLOAD_DIR=/var/lib/aka-semi-utils-web/uploads"
+Environment="AKA_SEMI_OUTPUT_DIR=/var/lib/aka-semi-utils-web/outputs"
+Environment="AKA_SEMI_RESOURCES_DIR=/var/lib/aka-semi-utils-web/resources"
+Environment="AKA_SEMI_TMP_DIR=/var/lib/aka-semi-utils-web/tmp"
+Environment="AKA_SEMI_MAX_IMAGE_PIXELS=50000000"
+Environment="AKA_SEMI_PREVIEW_MAX_IMAGE_PIXELS=100000000"
+ExecStart=/opt/aka-semi-utils-web/.venv/bin/python -m uvicorn web_api.main:app --host 127.0.0.1 --port 2189 --workers 1
+Restart=always
+RestartSec=5
+
+# 安全限制
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aka-semi-utils-web
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

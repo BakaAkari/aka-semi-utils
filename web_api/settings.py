@@ -17,10 +17,12 @@ class WebApiSettings:
     output_dir: Path
     resources_dir: Path
     tmp_dir: Path
-    max_upload_bytes: int = 15 * 1024 * 1024
+    # ~80MB for GFX100S2 RAW files
+    max_upload_bytes: int = 80 * 1024 * 1024
     max_resource_bytes: int = 5 * 1024 * 1024
-    max_image_pixels: int = 36_000_000
-    preview_max_image_pixels: int = 36_000_000
+    # 100M px supports GFX100S2 and larger medium format
+    max_image_pixels: int = 100_000_000
+    preview_max_image_pixels: int = 100_000_000
     max_resource_pixels: int = 25_000_000
     preview_max_edge: int = 1200
     output_quality: int = 95
@@ -44,10 +46,10 @@ class WebApiSettings:
             output_dir=root / "outputs",
             resources_dir=root / "resources",
             tmp_dir=root / "tmp",
-            max_upload_bytes=int(os.environ.get("AKA_SEMI_MAX_UPLOAD_BYTES", 15 * 1024 * 1024)),
+            max_upload_bytes=int(os.environ.get("AKA_SEMI_MAX_UPLOAD_BYTES", 80 * 1024 * 1024)),
             max_resource_bytes=int(os.environ.get("AKA_SEMI_MAX_RESOURCE_BYTES", 5 * 1024 * 1024)),
-            max_image_pixels=int(os.environ.get("AKA_SEMI_MAX_IMAGE_PIXELS", 36_000_000)),
-            preview_max_image_pixels=int(os.environ.get("AKA_SEMI_PREVIEW_MAX_IMAGE_PIXELS", 36_000_000)),
+            max_image_pixels=int(os.environ.get("AKA_SEMI_MAX_IMAGE_PIXELS", 100_000_000)),
+            preview_max_image_pixels=int(os.environ.get("AKA_SEMI_PREVIEW_MAX_IMAGE_PIXELS", 100_000_000)),
             max_resource_pixels=int(os.environ.get("AKA_SEMI_MAX_RESOURCE_PIXELS", 25_000_000)),
             preview_max_edge=int(os.environ.get("AKA_SEMI_PREVIEW_MAX_EDGE", 1200)),
             output_quality=int(os.environ.get("AKA_SEMI_OUTPUT_QUALITY", 95)),
