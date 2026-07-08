@@ -45,22 +45,6 @@ export const watermarkPresets: WatermarkPreset[] = [
     }
   },
   {
-    id: 'center-logo',
-    name: '中央 Logo',
-    description: '中央品牌 Logo，两侧保留 EXIF 信息，适合较正式展示。',
-    config: {
-      ...base(),
-      corners: {
-        left_top: { chips: [{ field_id: 'camera_model' }], separator: ' ', font_size_ratio: 0.034 },
-        left_bottom: { chips: [{ field_id: 'lens_model' }], separator: ' ', font_size_ratio: 0.03 },
-        right_top: { chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }], separator: '   ', font_size_ratio: 0.034 },
-        right_bottom: { chips: [{ field_id: 'shutter' }, { field_id: 'iso' }, { field_id: 'datetime' }], separator: '   ', font_size_ratio: 0.03 }
-      },
-      logo: { enabled: 'auto', position: 'center', color: '#D8D8D6', custom_path: '' },
-      advanced: { ...base().advanced, footer_height_px: 150, logo_height_px: 52, global_color: '#242424' }
-    }
-  },
-  {
     id: 'soft-card',
     name: '圆角阴影卡片',
     description: '加入圆角、阴影和更高底栏，适合社交媒体成片。',

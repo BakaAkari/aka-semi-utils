@@ -180,7 +180,7 @@ export function createDefaultWatermarkConfig(): WatermarkConfig {
       ratio_enabled: false,
       ratio: '3:4',
       concat_direction: 'vertical',
-      alignment_mode: 'center'
+      alignment_mode: 'bottom'
     }
   };
 }
