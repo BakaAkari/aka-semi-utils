@@ -1,8 +1,10 @@
 import { useContext } from 'react';
-import { AppContext } from '../main';
+import { useNavigate } from 'react-router-dom';
+import { AppContext } from '../HomePage';
 
 export function TopBar() {
   const ctx = useContext(AppContext);
+  const navigate = useNavigate();
   if (!ctx) return null;
 
   const { files, status, message, result, runPreview, runProcess, runProcessAll, progress } = ctx;
@@ -77,6 +79,13 @@ export function TopBar() {
             ↓ 下载
           </a>
         )}
+
+        <button
+          className="dev-entry-btn"
+          onClick={() => navigate('/_dev')}
+          title="开发者面板"
+          aria-label="开发者面板"
+        />
       </div>
     </header>
   );

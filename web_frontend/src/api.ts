@@ -1,6 +1,6 @@
 import type { WatermarkConfig } from './watermarkConfig';
 
-export type ApiFile = { filename: string; download_url: string };
+export type ApiFile = { filename: string; download_url: string; download_filename?: string };
 export type ProcessResponse = { ok: true; file: ApiFile };
 export type ApiErrorResponse = {
   ok: false;
@@ -12,11 +12,52 @@ export type ResourceUploadResponse = {
   kind: string;
   resource_id: string;
 };
-type UploadResponse = { ok: true; image_id: string; expires_in: number };
+type UploadResponse = { ok: true; image_id: string; expires_in: number; original_filename: string };
 
-const uploadedImages = new WeakMap<File, Promise<string>>();
+export type VisitResponse = { ok: true; new: boolean };
+export type StatsResponse = {
+  ok: true;
+  today: {
+    unique_visitors: number;
+    new_visitors: number;
+    processed_images: number;
+    api_calls: number;
+  };
+  lifetime: {
+    total_visitors: number;
+    total_processed_images: number;
+    total_api_calls: number;
+  };
+  trend: {
+    last_7_days: Array<{
+      date: string;
+      unique_visitors: number;
+      new_visitors: number;
+      processed_images: number;
+      api_calls: number;
+    }>;
+    last_30_days: Array<{
+      date: string;
+      unique_visitors: number;
+      new_visitors: number;
+      processed_images: number;
+      api_calls: number;
+    }>;
+  };
+  latency: {
+    p50_ms: number;
+    p99_ms: number;
+  };
+  extra: {
+    avg_batch_size: number;
+    active_ratio: number;
+  };
+};
 
-async function ensureUploaded(file: File, signal?: AbortSignal): Promise<string> {
+const uploadedImages = new WeakMap<File, Promise<{ image_id: string; original_filename: string }>>();
+const originalNames = new WeakMap<File, string>();
+
+async function ensureUploaded(file: File, signal?: AbortSignal): Promise<{ image_id: string; original_filename: string }> {
   const cached = uploadedImages.get(file);
   if (cached) return cached;
 
@@ -28,7 +69,8 @@ async function ensureUploaded(file: File, signal?: AbortSignal): Promise<string>
     if (!response.ok || !payload.ok) {
       throw new Error((payload as ApiErrorResponse).error?.message || `上传失败：${response.status}`);
     }
-    return payload.image_id;
+    originalNames.set(file, payload.original_filename);
+    return { image_id: payload.image_id, original_filename: payload.original_filename };
   })();
 
   uploadedImages.set(file, request);
@@ -46,10 +88,11 @@ export async function processImage(
   config: WatermarkConfig,
   signal?: AbortSignal
 ): Promise<ProcessResponse> {
-  const imageId = await ensureUploaded(file, signal);
+  const { image_id, original_filename } = await ensureUploaded(file, signal);
   const form = new FormData();
-  form.append('image_id', imageId);
+  form.append('image_id', image_id);
   form.append('config', JSON.stringify(config));
+  form.append('original_filename', original_filename);
 
   const response = await fetch(endpoint, { method: 'POST', body: form, signal });
   const payload = (await response.json()) as ProcessResponse | ApiErrorResponse;
@@ -73,4 +116,28 @@ export async function uploadResource(file: File, kind: 'logo' | 'signature'): Pr
 
 export function toDownloadUrl(file: ApiFile): string {
   return file.download_url;
+}
+
+export async function postVisit(visitorId: string): Promise<VisitResponse> {
+  const response = await fetch('/api/_visit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ visitor_id: visitorId }),
+  });
+  const payload = (await response.json()) as VisitResponse | ApiErrorResponse;
+  if (!response.ok || !payload.ok) {
+    throw new Error((payload as ApiErrorResponse).error?.message || `请求失败：${response.status}`);
+  }
+  return payload as VisitResponse;
+}
+
+export async function getStats(password: string): Promise<StatsResponse> {
+  const response = await fetch('/api/_stats', {
+    headers: { 'X-Dev-Password': password },
+  });
+  const payload = (await response.json()) as StatsResponse | ApiErrorResponse;
+  if (!response.ok || !payload.ok) {
+    throw new Error((payload as ApiErrorResponse).error?.message || `请求失败：${response.status}`);
+  }
+  return payload as StatsResponse;
 }

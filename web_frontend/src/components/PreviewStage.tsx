@@ -1,5 +1,5 @@
 import { useContext } from 'react';
-import { AppContext } from '../main';
+import { AppContext } from '../HomePage';
 
 export function PreviewStage() {
   const ctx = useContext(AppContext);

@@ -1,5 +1,5 @@
 import { useCallback, useContext, useRef, useState } from 'react';
-import { AppContext } from '../main';
+import { AppContext } from '../HomePage';
 import { uploadResource } from '../api';
 import {
   anchorLabels,

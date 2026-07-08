@@ -624,17 +624,19 @@ hr, .divider {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
+  padding: 8px; /* 给左上角角标留出空间 */
 }
 
 .thumb-item {
   aspect-ratio: 1;
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  overflow: visible;
   cursor: pointer;
   position: relative;
   background: rgba(0,0,0,0.3);
   transition: all var(--dur-fast) var(--ease-out);
   border: 1px solid transparent;
+  margin: 2px; /* 给 scale(1.02) 放大留出空间，避免截断 */
 }
 
 .thumb-item:hover {
@@ -652,28 +654,17 @@ hr, .divider {
   height: 100%;
   object-fit: cover;
   display: block;
-}
-
-.thumb-item .thumb-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity var(--dur-fast);
-}
-
-.thumb-item:hover .thumb-overlay {
-  opacity: 1;
+  border-radius: var(--radius-sm);
 }
 
 .thumb-item .thumb-remove {
+  position: absolute;
+  top: -8px;
+  left: -8px;
   width: 22px;
   height: 22px;
   border-radius: var(--radius-full);
-  background: rgba(255,69,58,0.9);
+  background: rgba(255,69,58,0.95);
   color: #fff;
   display: flex;
   align-items: center;
@@ -682,10 +673,21 @@ hr, .divider {
   cursor: pointer;
   border: none;
   padding: 0;
+  z-index: 2;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  opacity: 0;
+  transition: opacity var(--dur-fast), transform var(--dur-fast);
+  pointer-events: none;
+}
+
+.thumb-item:hover .thumb-remove {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .thumb-item .thumb-remove:hover {
   background: #FF453A;
+  transform: scale(1.1);
 }
 
 /* 预设卡片 */
@@ -759,7 +761,6 @@ hr, .divider {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
   background: rgba(0,0,0,0.35);
   overflow: hidden;
   position: relative;
@@ -770,7 +771,6 @@ hr, .divider {
   max-height: 100%;
   object-fit: contain;
   display: block;
-  border-radius: var(--radius-sm);
   transition: opacity 0.3s ease;
 }
 
@@ -1091,7 +1091,24 @@ hr, .divider {
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
-/* 响应式 */
+/* 开发者入口按钮 */
+.dev-entry-btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  opacity: 0.15;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-out);
+  flex-shrink: 0;
+}
+
+.dev-entry-btn:hover {
+  opacity: 1;
+  transform: scale(1.17);
+}
 @media (max-width: 1024px) {
   .workspace {
     flex-direction: column;

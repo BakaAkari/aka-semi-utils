@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
+from web_api import stats
 from web_api.errors import ApiError
 from web_api.processing import process_image
 from web_api.schemas import config_from_payload, success_response
@@ -66,12 +68,41 @@ def health() -> dict[str, Any]:
     return success_response(status="ok")
 
 
+@app.post("/api/_visit")
+async def visit_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
+    """Record a visitor fingerprint."""
+    visitor_id = payload.get("visitor_id", "")
+    if not visitor_id or not isinstance(visitor_id, str):
+        raise ApiError(code="invalid_visitor", message="visitor_id 不能为空", status_code=400)
+    new = stats.record_visit(visitor_id)
+    return success_response(new=new)
+
+
+@app.get("/api/_stats")
+def stats_endpoint(request: Request) -> dict[str, Any]:
+    """Return full statistics (requires X-Dev-Password header)."""
+    password = request.headers.get("X-Dev-Password", "")
+    if password != "23323312":
+        raise ApiError(code="forbidden", message="禁止访问", status_code=403)
+    return stats.get_stats()
+
+
+@app.get("/api/_stats/health")
+def stats_health() -> dict[str, Any]:
+    """Check stats database connectivity."""
+    return stats.health_check()
+
+
 @app.post("/api/uploads")
 async def upload_image(file: UploadFile = File(...)) -> dict[str, Any]:
     """Upload an input image once and return an expiring opaque id."""
 
     path = await save_upload(file, settings)
-    return success_response(image_id=path.name, expires_in=settings.file_ttl_seconds)
+    return success_response(
+        image_id=path.name,
+        expires_in=settings.file_ttl_seconds,
+        original_filename=file.filename or "image.jpg",
+    )
 
 
 @app.post("/api/upload-resource")
@@ -94,10 +125,14 @@ async def process_endpoint(
     file: UploadFile | None = File(default=None),
     image_id: str = Form(default=""),
     config: str = Form(default="{}"),
+    original_filename: str = Form(default=""),
 ) -> dict[str, Any]:
     """Process a single uploaded image with the full-resolution pipeline."""
 
-    return await _run_single_image(file=file, image_id=image_id, config_json=config, preview=False)
+    return await _run_single_image(
+        file=file, image_id=image_id, config_json=config,
+        original_filename=original_filename, preview=False
+    )
 
 
 @app.post("/api/preview")
@@ -105,10 +140,14 @@ async def preview_endpoint(
     file: UploadFile | None = File(default=None),
     image_id: str = Form(default=""),
     config: str = Form(default="{}"),
+    original_filename: str = Form(default=""),
 ) -> dict[str, Any]:
     """Process a single uploaded image with preview downscaling."""
 
-    return await _run_single_image(file=file, image_id=image_id, config_json=config, preview=True)
+    return await _run_single_image(
+        file=file, image_id=image_id, config_json=config,
+        original_filename=original_filename, preview=True
+    )
 
 
 @app.get("/api/files/{filename}")
@@ -123,19 +162,23 @@ async def _run_single_image(
     file: UploadFile | None,
     image_id: str,
     config_json: str,
+    original_filename: str,
     *,
     preview: bool,
 ) -> dict[str, Any]:
     cleanup_expired_files(settings)
     if file is not None:
         input_path = await save_upload(file, settings)
+        original_filename = file.filename or original_filename or "image.jpg"
     elif image_id:
         input_path = resolve_upload(image_id, settings)
     else:
         raise ApiError(code="missing_image", message="请先上传图片", status_code=400)
     config_payload = _parse_config_json(config_json)
     watermark_config = config_from_payload(config_payload)
-    output_path = new_output_path(input_path, settings, prefix="preview" if preview else "process")
+    output_path = new_output_path(
+        input_path, settings, prefix="preview" if preview else "process",
+    )
     try:
         await asyncio.wait_for(_job_slots.acquire(), timeout=0.01)
     except TimeoutError as exc:
@@ -145,6 +188,7 @@ async def _run_single_image(
             status_code=429,
         ) from exc
     try:
+        t0 = time.perf_counter()
         result_path = await run_in_threadpool(
             process_image,
             input_path,
@@ -153,8 +197,17 @@ async def _run_single_image(
             settings,
             preview=preview,
         )
+        latency_ms = int((time.perf_counter() - t0) * 1000)
     finally:
         _job_slots.release()
+
+    stats.record_process(
+        operation="preview" if preview else "process",
+        latency_ms=max(0, latency_ms),
+        batch_count=1,
+        visitor_id="",
+        preset_name="",
+    )
     return success_response(file=public_file_payload(result_path))
 
 
