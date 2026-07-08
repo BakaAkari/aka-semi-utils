@@ -868,16 +868,16 @@ hr, .divider {
   box-shadow: none;
 }
 
-.inspector-tab.active::after {
-  content: '';
+/* Sliding tab indicator */
+.tab-indicator {
   position: absolute;
   bottom: -1px;
-  left: 8px;
-  right: 8px;
+  left: 0;
   height: 2px;
   background: var(--accent);
   border-radius: 2px 2px 0 0;
-  animation: fadeIn 0.15s ease;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, width;
 }
 
 .inspector-body {
@@ -885,7 +885,44 @@ hr, .divider {
   overflow-y: auto;
   padding: 14px;
   min-height: 0;
+  position: relative;
 }
+
+/* Tab panel transition */
+.tab-panel {
+  position: absolute;
+  inset: 14px;
+  opacity: 0;
+  transform: translateX(12px);
+  pointer-events: none;
+  transition: opacity 0.25s cubic-bezier(0.22, 1, 0.36, 1), transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.tab-panel.active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+  position: relative;
+  inset: auto;
+}
+
+.tab-panel > * {
+  animation: panelEnter 0.3s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+}
+
+@keyframes panelEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Stagger children animation inside active panel */
+.tab-panel.active .form-row:nth-child(1) { animation-delay: 0.02s; }
+.tab-panel.active .form-row:nth-child(2) { animation-delay: 0.04s; }
+.tab-panel.active .form-row:nth-child(3) { animation-delay: 0.06s; }
+.tab-panel.active .form-row:nth-child(4) { animation-delay: 0.08s; }
+.tab-panel.active .form-row:nth-child(5) { animation-delay: 0.10s; }
+.tab-panel.active .form-row:nth-child(6) { animation-delay: 0.12s; }
 
 /* 角切换 */
 .corner-tabs {

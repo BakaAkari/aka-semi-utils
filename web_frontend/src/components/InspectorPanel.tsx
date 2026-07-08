@@ -1,4 +1,4 @@
-import { useCallback, useContext, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../HomePage';
 import { uploadResource } from '../api';
 import {
@@ -23,12 +23,38 @@ const TAB_LABELS: Record<InspectorTab, string> = {
   effects: '特效',
 };
 
+const TAB_ORDER: InspectorTab[] = ['corners', 'logo', 'signature', 'canvas', 'output', 'effects'];
+
 export function InspectorPanel() {
   const ctx = useContext(AppContext);
   if (!ctx) return null;
   const { config, setConfig } = ctx;
   const [tab, setTab] = useState<InspectorTab>('corners');
   const [activeCorner, setActiveCorner] = useState<CornerKey>('left_top');
+  const [indicatorStyle, setIndicatorStyle] = useState<{ transform: string; width: string }>({ transform: 'translateX(0)', width: '0px' });
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const updateIndicator = useCallback(() => {
+    const idx = TAB_ORDER.indexOf(tab);
+    const el = tabRefs.current[idx];
+    if (!el) return;
+    const parent = el.parentElement;
+    if (!parent) return;
+    const parentRect = parent.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    setIndicatorStyle({
+      transform: `translateX(${elRect.left - parentRect.left}px)`,
+      width: `${elRect.width}px`,
+    });
+  }, [tab]);
+
+  useEffect(() => {
+    updateIndicator();
+    const ro = new ResizeObserver(() => updateIndicator());
+    const parent = tabRefs.current[0]?.parentElement;
+    if (parent) ro.observe(parent);
+    return () => ro.disconnect();
+  }, [updateIndicator]);
 
   const updateAdvanced = useCallback(
     (patch: Partial<WatermarkConfig['advanced']>) => {
@@ -102,22 +128,34 @@ export function InspectorPanel() {
     [setConfig, ctx]
   );
 
+  const handleTabClick = useCallback((t: InspectorTab) => {
+    setTab(t);
+  }, []);
+
   return (
     <aside className="inspector">
       <div className="inspector-panel">
-        <div className="inspector-tabs">
-          {(Object.keys(TAB_LABELS) as InspectorTab[]).map((t) => (
+        <div className="inspector-tabs" ref={(el) => { if (el) updateIndicator(); }}>
+          {TAB_ORDER.map((t, i) => (
             <button
               key={t}
+              ref={(el) => { tabRefs.current[i] = el; }}
               className={`inspector-tab ${tab === t ? 'active' : ''}`}
-              onClick={() => setTab(t)}
+              onClick={() => handleTabClick(t)}
             >
               {TAB_LABELS[t]}
             </button>
           ))}
+          <div
+            className="tab-indicator"
+            style={{
+              transform: indicatorStyle.transform,
+              width: indicatorStyle.width,
+            }}
+          />
         </div>
         <div className="inspector-body">
-          {tab === 'corners' && (
+          <div className={`tab-panel ${tab === 'corners' ? 'active' : ''}`}>
             <CornersTab
               config={config}
               activeCorner={activeCorner}
@@ -127,19 +165,27 @@ export function InspectorPanel() {
               addChip={addChip}
               removeChip={removeChip}
             />
-          )}
-          {tab === 'logo' && <LogoTab config={config} setConfig={setConfig} onUpload={handleUploadResource} />}
-          {tab === 'signature' && <SignatureTab config={config} setConfig={setConfig} onUpload={handleUploadResource} />}
-          {tab === 'canvas' && <CanvasTab config={config} updateAdvanced={updateAdvanced} />}
-          {tab === 'output' && <OutputTab config={config} updateAdvanced={updateAdvanced} />}
-          {tab === 'effects' && <EffectsTab config={config} updateAdvanced={updateAdvanced} />}
+          </div>
+          <div className={`tab-panel ${tab === 'logo' ? 'active' : ''}`}>
+            <LogoTab config={config} setConfig={setConfig} onUpload={handleUploadResource} />
+          </div>
+          <div className={`tab-panel ${tab === 'signature' ? 'active' : ''}`}>
+            <SignatureTab config={config} setConfig={setConfig} onUpload={handleUploadResource} />
+          </div>
+          <div className={`tab-panel ${tab === 'canvas' ? 'active' : ''}`}>
+            <CanvasTab config={config} updateAdvanced={updateAdvanced} />
+          </div>
+          <div className={`tab-panel ${tab === 'output' ? 'active' : ''}`}>
+            <OutputTab config={config} updateAdvanced={updateAdvanced} />
+          </div>
+          <div className={`tab-panel ${tab === 'effects' ? 'active' : ''}`}>
+            <EffectsTab config={config} updateAdvanced={updateAdvanced} />
+          </div>
         </div>
       </div>
     </aside>
   );
 }
-
-// ==================== Corners Tab ====================
 function CornersTab({
   config,
   activeCorner,
