@@ -36,6 +36,13 @@ export type StatsResponse = {
       processed_images: number;
       api_calls: number;
     }>;
+    last_15_days: Array<{
+      date: string;
+      unique_visitors: number;
+      new_visitors: number;
+      processed_images: number;
+      api_calls: number;
+    }>;
     last_30_days: Array<{
       date: string;
       unique_visitors: number;

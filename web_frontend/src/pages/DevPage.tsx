@@ -17,20 +17,41 @@ function generateVisitorId(): string {
   return s;
 }
 
+type TrendRow = {
+  date: string;
+  unique_visitors: number;
+  new_visitors: number;
+  processed_images: number;
+  api_calls: number;
+};
+
+type StatsData = {
+  ok: true;
+  today: {
+    unique_visitors: number;
+    new_visitors: number;
+    processed_images: number;
+    api_calls: number;
+  };
+  lifetime: {
+    total_visitors: number;
+    total_processed_images: number;
+    total_api_calls: number;
+  };
+  trend: {
+    last_7_days: TrendRow[];
+    last_15_days: TrendRow[];
+    last_30_days: TrendRow[];
+  };
+  latency: { p50_ms: number; p99_ms: number };
+  extra: { avg_batch_size: number; active_ratio: number };
+};
+
 export function DevPage() {
   const navigate = useNavigate();
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('_dev_auth') === 'true');
-  const [stats, setStats] = useState<{
-    ok: true;
-    today: { unique_visitors: number; new_visitors: number; processed_images: number; api_calls: number };
-    lifetime: { total_visitors: number; total_processed_images: number; total_api_calls: number };
-    trend: {
-      last_7_days: Array<{ date: string; unique_visitors: number; new_visitors: number; processed_images: number; api_calls: number }>;
-      last_30_days: Array<{ date: string; unique_visitors: number; new_visitors: number; processed_images: number; api_calls: number }>;
-    };
-    latency: { p50_ms: number; p99_ms: number };
-    extra: { avg_batch_size: number; active_ratio: number };
-  } | null>(null);
+  const [timeRange, setTimeRange] = useState<'7' | '15' | '30'>('7');
+  const [stats, setStats] = useState<StatsData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,9 +101,13 @@ export function DevPage() {
 
   const today = stats?.today ?? { unique_visitors: 0, new_visitors: 0, processed_images: 0, api_calls: 0 };
   const lifetime = stats?.lifetime ?? { total_visitors: 0, total_processed_images: 0, total_api_calls: 0 };
-  const trend = stats?.trend?.last_7_days ?? [];
   const latency = stats?.latency ?? { p50_ms: 0, p99_ms: 0 };
   const extra = stats?.extra ?? { avg_batch_size: 0, active_ratio: 0 };
+
+  const trendKey = timeRange === '7' ? 'last_7_days' : timeRange === '15' ? 'last_15_days' : 'last_30_days';
+  const trend = stats?.trend?.[trendKey] ?? [];
+  const chartTitle = `${timeRange} 日趋势`;
+  const tableTitle = `${timeRange} 日详细数据`;
 
   const kpiData = [
     { label: '今日独立访客', value: today.unique_visitors, color: 'blue' as const, trend: today.unique_visitors > 0 ? 5.2 : 0 },
@@ -91,11 +116,28 @@ export function DevPage() {
     { label: '累计处理', value: lifetime.total_processed_images, color: 'neutral' as const },
   ];
 
+  const rangeButtons: { key: '7' | '15' | '30'; label: string }[] = [
+    { key: '7', label: '7日' },
+    { key: '15', label: '15日' },
+    { key: '30', label: '30日' },
+  ];
+
   return (
     <div className="dev-page">
       <div className="dev-page-header">
         <div className="dev-page-title">用量洞察</div>
         <div className="dev-page-actions">
+          <div className="time-range-segment">
+            {rangeButtons.map(b => (
+              <button
+                key={b.key}
+                className={`time-range-btn ${timeRange === b.key ? 'active' : ''}`}
+                onClick={() => setTimeRange(b.key)}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
           <button
             className={`dev-refresh-btn ${refreshing ? 'spinning' : ''}`}
             onClick={handleRefresh}
@@ -131,7 +173,7 @@ export function DevPage() {
 
           <div className="dev-charts-section">
             <div className="dev-chart-main">
-              <TrendChart data={trend} />
+              <TrendChart data={trend} title={chartTitle} />
             </div>
             <div className="dev-chart-side">
               <div className="mini-card">
@@ -154,7 +196,7 @@ export function DevPage() {
           </div>
 
           <div className="dev-table-section">
-            <DataTable data={trend} />
+            <DataTable data={trend} title={tableTitle} />
           </div>
         </>
       )}

@@ -6,9 +6,10 @@ interface DataTableProps {
     processed_images: number;
     api_calls: number;
   }>;
+  title?: string;
 }
 
-export function DataTable({ data }: DataTableProps) {
+export function DataTable({ data, title = '详细数据' }: DataTableProps) {
   if (data.length === 0) return (
     <div className="data-table-empty">暂无数据</div>
   );
@@ -16,7 +17,7 @@ export function DataTable({ data }: DataTableProps) {
   return (
     <div className="data-table-wrapper">
       <div className="data-table-header">
-        <div className="data-table-title">7 日详细数据</div>
+        <div className="data-table-title">{title}</div>
       </div>
       <table className="data-table">
         <thead>

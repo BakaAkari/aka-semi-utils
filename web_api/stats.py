@@ -177,6 +177,19 @@ def get_stats() -> dict[str, Any]:
         )
     ]
 
+    # Last 15 days
+    fifteen_ago = (date.today() - timedelta(days=14)).isoformat()
+    last_15 = [
+        dict(row)
+        for row in conn.execute(
+            """
+            select date, unique_visitors, new_visitors, processed_images, api_calls
+            from daily_stats where date >= ? order by date
+            """,
+            (fifteen_ago,),
+        )
+    ]
+
     # Last 30 days
     thirty_ago = (date.today() - timedelta(days=29)).isoformat()
     last_30 = [
@@ -239,6 +252,7 @@ def get_stats() -> dict[str, Any]:
         },
         "trend": {
             "last_7_days": last_7,
+            "last_15_days": last_15,
             "last_30_days": last_30,
         },
         "latency": {

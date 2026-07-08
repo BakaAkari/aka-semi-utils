@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 
 interface TrendChartProps {
   data: Array<{ date: string; unique_visitors: number; processed_images: number }>;
+  title?: string;
 }
 
-export function TrendChart({ data }: TrendChartProps) {
+export function TrendChart({ data, title = '趋势' }: TrendChartProps) {
   const [animated, setAnimated] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
+    setAnimated(false);
     const timer = setTimeout(() => setAnimated(true), 50);
     return () => clearTimeout(timer);
   }, [data]);
@@ -28,9 +30,6 @@ export function TrendChart({ data }: TrendChartProps) {
   const xScale = (i: number) => padding.left + (i / (data.length - 1 || 1)) * chartWidth;
   const yScale = (v: number) => padding.top + chartHeight - (v / maxY) * chartHeight;
 
-  const visitorsPoints = data.map((d, i) => `${xScale(i)},${yScale(d.unique_visitors)}`).join(' ');
-  const processedPoints = data.map((d, i) => `${xScale(i)},${yScale(d.processed_images)}`).join(' ');
-
   const visitorsPath = `M ${data.map((d, i) => `${xScale(i)} ${yScale(d.unique_visitors)}`).join(' L ')}`;
   const processedPath = `M ${data.map((d, i) => `${xScale(i)} ${yScale(d.processed_images)}`).join(' L ')}`;
 
@@ -42,7 +41,7 @@ export function TrendChart({ data }: TrendChartProps) {
   return (
     <div className="trend-chart-card">
       <div className="trend-chart-header">
-        <div className="trend-chart-title">7 日趋势</div>
+        <div className="trend-chart-title">{title}</div>
         <div className="trend-chart-legend">
           <span className="legend-dot blue" /> 访客
           <span className="legend-dot green" /> 处理
@@ -73,19 +72,22 @@ export function TrendChart({ data }: TrendChartProps) {
           />
         ))}
 
-        {/* X axis labels */}
-        {data.map((d, i) => (
-          <text
-            key={d.date}
-            x={xScale(i)}
-            y={height - 6}
-            textAnchor="middle"
-            fill="#8a8a8e"
-            fontSize={10}
-          >
-            {d.date.slice(5)}
-          </text>
-        ))}
+        {/* X axis labels — only show every other label for 15/30 day to avoid crowding */}
+        {data.map((d, i) => {
+          const showEvery = data.length <= 10 ? 1 : data.length <= 20 ? 2 : 4;
+          return i % showEvery === 0 ? (
+            <text
+              key={d.date}
+              x={xScale(i)}
+              y={height - 6}
+              textAnchor="middle"
+              fill="#8a8a8e"
+              fontSize={10}
+            >
+              {d.date.slice(5)}
+            </text>
+          ) : null;
+        })}
 
         {/* Y axis labels */}
         {[0, 0.25, 0.5, 0.75, 1].map(r => (
