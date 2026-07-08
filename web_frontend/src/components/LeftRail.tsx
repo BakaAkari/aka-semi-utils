@@ -182,7 +182,7 @@ export function LeftRail() {
         </div>
       )}
 
-      <div className="rail-panel" style={{ flexShrink: 0, maxHeight: 380 }}>
+      <div className="rail-panel" style={{ flexShrink: 0, maxHeight: 380, marginTop: 'auto' }}>
         <div className="rail-panel-header">
           <span className="rail-panel-title">水印预设</span>
           <button className="small ghost" onClick={onReset}>重置</button>
