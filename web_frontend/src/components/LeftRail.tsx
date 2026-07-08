@@ -1,4 +1,4 @@
-import { useCallback, useContext, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../HomePage';
 import { watermarkPresets } from '../presets';
 import type { WatermarkConfig } from '../watermarkConfig';
@@ -17,6 +17,34 @@ export function LeftRail() {
   const { files, setFiles, activeFileIndex, setActiveFileIndex, removeFile, setConfig, clearOutputs, showToast } = ctx;
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const objectUrlsRef = useRef<Map<File, string>>(new Map());
+
+  // Manage object URL lifecycle to prevent memory leaks
+  useEffect(() => {
+    const currentFiles = new Set(files);
+    const urls = objectUrlsRef.current;
+
+    // Create URLs for new files
+    files.forEach(file => {
+      if (!urls.has(file)) {
+        urls.set(file, URL.createObjectURL(file));
+      }
+    });
+
+    // Revoke URLs for removed files
+    urls.forEach((url, file) => {
+      if (!currentFiles.has(file)) {
+        URL.revokeObjectURL(url);
+        urls.delete(file);
+      }
+    });
+
+    return () => {
+      // Cleanup all on unmount
+      urls.forEach(url => URL.revokeObjectURL(url));
+      urls.clear();
+    };
+  }, [files]);
 
   const handleFiles = useCallback((fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
@@ -165,7 +193,7 @@ export function LeftRail() {
                   onClick={() => setActiveFileIndex(i)}
                   title={file.name}
                 >
-                  <img src={URL.createObjectURL(file)} alt={file.name} />
+                  <img src={objectUrlsRef.current.get(file) ?? URL.createObjectURL(file)} alt={file.name} />
                   <div className="thumb-overlay">
                     <button
                       className="thumb-remove"

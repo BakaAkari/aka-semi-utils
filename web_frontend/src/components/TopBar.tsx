@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useCallback, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppContext } from '../HomePage';
 
@@ -7,9 +7,23 @@ export function TopBar() {
   const navigate = useNavigate();
   if (!ctx) return null;
 
-  const { files, status, message, result, runPreview, runProcess, runProcessAll, progress } = ctx;
+  const { files, status, message, result, batchResults, runPreview, runProcess, runProcessAll, progress, clearBatchResults } = ctx;
   const hasFiles = files.length > 0;
   const isRunning = status === 'running';
+
+  const downloadBatch = useCallback(() => {
+    batchResults.forEach((file, i) => {
+      const a = document.createElement('a');
+      a.href = file.download_url;
+      a.download = file.download_filename || file.filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      setTimeout(() => {
+        a.click();
+        document.body.removeChild(a);
+      }, i * 300); // stagger downloads to avoid browser blocking
+    });
+  }, [batchResults]);
 
   return (
     <header className="topbar">
@@ -69,6 +83,25 @@ export function TopBar() {
         >
           处理全部
         </button>
+
+        {batchResults.length > 0 && (
+          <>
+            <button
+              className="success"
+              onClick={downloadBatch}
+              title={`下载全部 ${batchResults.length} 张已处理图片`}
+            >
+              ↓ 下载全部 ({batchResults.length})
+            </button>
+            <button
+              className="ghost micro"
+              onClick={clearBatchResults}
+              title="清除下载列表"
+            >
+              ✕
+            </button>
+          </>
+        )}
 
         {result && (
           <a

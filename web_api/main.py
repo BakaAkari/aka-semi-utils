@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
 # Allow large file uploads (100MB) for GFX100S2 RAW files
 os.environ.setdefault("MULTIPART_MAX_FILE_SIZE", "100000000")
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -156,6 +158,62 @@ def get_output_file(filename: str) -> FileResponse:
 
     path = resolve_public_output(filename, settings)
     return FileResponse(path, filename=path.name)
+
+
+@app.post("/api/batch-download")
+async def batch_download_endpoint(payload: dict[str, Any], background_tasks: BackgroundTasks) -> FileResponse:
+    """Download multiple processed images as a zip archive."""
+
+    filenames = payload.get("filenames", [])
+    if not filenames or not isinstance(filenames, list) or len(filenames) == 0:
+        raise ApiError(
+            code="invalid_request",
+            message="请提供至少一个文件名",
+            status_code=400,
+        )
+    if len(filenames) > 50:
+        raise ApiError(
+            code="too_many_files",
+            message="一次最多下载 50 个文件",
+            status_code=400,
+        )
+
+    valid_paths: list[tuple[str, Path]] = []
+    for filename in filenames:
+        if not isinstance(filename, str) or not filename:
+            continue
+        try:
+            path = resolve_public_output(filename, settings)
+            valid_paths.append((filename, path))
+        except ApiError:
+            continue
+
+    if not valid_paths:
+        raise ApiError(
+            code="no_files",
+            message="没有可下载的文件或文件已过期",
+            status_code=404,
+        )
+
+    settings.ensure_dirs()
+    zip_name = f"batch-{secrets.token_urlsafe(12)}.zip"
+    zip_path = settings.tmp_dir / zip_name
+
+    def _create_zip() -> None:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for arcname, path in valid_paths:
+                zf.write(path, arcname=arcname)
+
+    await run_in_threadpool(_create_zip)
+
+    # Schedule cleanup after response is sent
+    background_tasks.add_task(zip_path.unlink, missing_ok=True)
+
+    return FileResponse(
+        zip_path,
+        filename="batch-download.zip",
+        media_type="application/zip",
+    )
 
 
 async def _run_single_image(

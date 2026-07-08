@@ -22,6 +22,7 @@ export type AppContextType = {
   setConfig: React.Dispatch<React.SetStateAction<WatermarkConfig>>;
   preview: ApiFile | null;
   result: ApiFile | null;
+  batchResults: ApiFile[];
   status: ActionState;
   message: string;
   progress: number;
@@ -31,10 +32,12 @@ export type AppContextType = {
   runPreview: (opts?: { silent?: boolean }) => Promise<void>;
   runProcess: () => Promise<void>;
   runProcessAll: () => Promise<void>;
+  cancelProcessAll: () => void;
   setFiles: React.Dispatch<React.SetStateAction<File[]>>;
   setActiveFileIndex: React.Dispatch<React.SetStateAction<number>>;
   removeFile: (index: number) => void;
   clearOutputs: () => void;
+  clearBatchResults: () => void;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -46,6 +49,7 @@ export function HomePage() {
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [config, setConfig] = useState<WatermarkConfig>(() => createDefaultWatermarkConfig());
   const [result, setResult] = useState<ApiFile | null>(null);
+  const [batchResults, setBatchResults] = useState<ApiFile[]>([]);
   const [preview, setPreview] = useState<ApiFile | null>(null);
   const [status, setStatus] = useState<ActionState>('idle');
   const [message, setMessage] = useState('拖拽图片或点击上传开始');
@@ -53,7 +57,8 @@ export function HomePage() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const previewRequestId = useRef(0);
   const previewAbort = useRef<AbortController | null>(null);
-  const processingAbort = useRef(false);
+  const processingAbort = useRef<AbortController | null>(null);
+  const previewDebounceTimer = useRef<number | null>(null);
 
   const sanitizedConfig = useMemo(() => sanitizeConfig(config), [config]);
 
@@ -76,6 +81,10 @@ export function HomePage() {
     setProgress(0);
   }, []);
 
+  const clearBatchResults = useCallback(() => {
+    setBatchResults([]);
+  }, []);
+
   const removeFile = useCallback((index: number) => {
     setFiles(prev => {
       const next = prev.filter((_, i) => i !== index);
@@ -83,15 +92,13 @@ export function HomePage() {
         clearOutputs();
         setStatus('idle');
         setMessage('拖拽图片或点击上传开始');
+        setActiveFileIndex(0);
+      } else {
+        setActiveFileIndex(prevIdx => (prevIdx >= next.length ? next.length - 1 : prevIdx));
       }
       return next;
     });
-    setActiveFileIndex(prev => {
-      const nextLength = files.length - 1; // after removal
-      if (nextLength === 0) return 0;
-      return Math.min(prev, nextLength - 1);
-    });
-  }, [files.length, clearOutputs]);
+  }, [clearOutputs]);
 
   const runPreview = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     const file = files[activeFileIndex];
@@ -129,6 +136,10 @@ export function HomePage() {
     }
   }, [files, activeFileIndex, sanitizedConfig, showToast]);
 
+  // Ref to always access the latest runPreview without triggering effect re-runs
+  const runPreviewRef = useRef(runPreview);
+  runPreviewRef.current = runPreview;
+
   const runProcess = useCallback(async () => {
     const file = files[activeFileIndex];
     if (!file) {
@@ -160,26 +171,31 @@ export function HomePage() {
       return;
     }
 
-    processingAbort.current = false;
+    processingAbort.current?.abort();
+    const abortController = new AbortController();
+    processingAbort.current = abortController;
     setStatus('running');
     setMessage(`正在处理 0/${files.length}...`);
     setProgress(0);
+    setBatchResults([]);
     const results: ApiFile[] = [];
 
     for (let i = 0; i < files.length; i++) {
-      if (processingAbort.current) break;
+      if (abortController.signal.aborted) break;
       try {
-        const response = await processImage('/api/process', files[i], sanitizedConfig);
+        const response = await processImage('/api/process', files[i], sanitizedConfig, abortController.signal);
         results.push(response.file);
+        setBatchResults(prev => [...prev, response.file]);
         setProgress(Math.round(((i + 1) / files.length) * 100));
         setMessage(`正在处理 ${i + 1}/${files.length}...`);
       } catch (error) {
+        if (abortController.signal.aborted) break;
         const msg = error instanceof Error ? error.message : '处理失败';
         showToast(`第 ${i + 1} 张处理失败: ${msg}`, 'error');
       }
     }
 
-    if (processingAbort.current) {
+    if (abortController.signal.aborted) {
       setStatus('idle');
       setMessage('已取消');
       return;
@@ -191,23 +207,42 @@ export function HomePage() {
     showToast(`批量处理完成: ${results.length}/${files.length}`, 'success');
   }, [files, sanitizedConfig, showToast]);
 
+  const cancelProcessAll = useCallback(() => {
+    processingAbort.current?.abort();
+    processingAbort.current = null;
+    setStatus('idle');
+    setMessage('已取消');
+  }, []);
+
+  // Debounced auto-preview: only trigger after 800ms of no changes.
+  // Use runPreviewRef to avoid including runPreview in deps, preventing
+  // unnecessary timer resets when the callback identity changes.
   useEffect(() => {
     if (files.length === 0) return;
-    const timer = window.setTimeout(() => {
-      void runPreview({ silent: true });
+    if (previewDebounceTimer.current !== null) {
+      window.clearTimeout(previewDebounceTimer.current);
+    }
+    previewDebounceTimer.current = window.setTimeout(() => {
+      previewDebounceTimer.current = null;
+      void runPreviewRef.current({ silent: true });
     }, 800);
-    return () => window.clearTimeout(timer);
-  }, [files, activeFileIndex, sanitizedConfig, runPreview]);
+    return () => {
+      if (previewDebounceTimer.current !== null) {
+        window.clearTimeout(previewDebounceTimer.current);
+        previewDebounceTimer.current = null;
+      }
+    };
+  }, [files, activeFileIndex, sanitizedConfig]);
 
   const contextValue = useMemo<AppContextType>(
     () => ({
       files, activeFileIndex, config, setConfig,
-      preview, result, status, message, progress, toasts,
+      preview, result, batchResults, status, message, progress, toasts,
       showToast, removeToast,
-      runPreview, runProcess, runProcessAll,
-      setFiles, setActiveFileIndex, removeFile, clearOutputs
+      runPreview, runProcess, runProcessAll, cancelProcessAll,
+      setFiles, setActiveFileIndex, removeFile, clearOutputs, clearBatchResults
     }),
-    [files, activeFileIndex, config, preview, result, status, message, progress, toasts, showToast, removeToast, runPreview, runProcess, runProcessAll, clearOutputs, removeFile]
+    [files, activeFileIndex, config, preview, result, batchResults, status, message, progress, toasts, showToast, removeToast, runPreview, runProcess, runProcessAll, cancelProcessAll, clearOutputs, removeFile, clearBatchResults]
   );
 
   return (

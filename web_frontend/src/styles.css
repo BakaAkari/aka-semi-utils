@@ -1091,7 +1091,30 @@ hr, .divider {
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
-/* 开发者入口按钮 */
+/* 批量下载按钮区域 */
+.batch-download-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 小型成功按钮 */
+button.success.small, .btn.success.small {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* 预览 loading 状态增强 */
+.preview-empty .spinner {
+  margin-bottom: 4px;
+}
+
+/* 批量下载提示 */
+.batch-download-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 0 6px;
+}
 .dev-entry-btn {
   width: 12px;
   height: 12px;
