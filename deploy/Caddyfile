@@ -2,7 +2,7 @@ photo.baka-akari.icu {
     encode zstd gzip
 
     request_body {
-        max_size 16MB
+        max_size 80MB
     }
 
     header {
