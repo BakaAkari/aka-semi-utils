@@ -30,6 +30,12 @@ export type LogoConfig = {
   position: 'left' | 'center' | 'right';
   color: string;
   custom_path: string;
+  // Free-positioning mode (脱离底条自由定位)
+  free_position?: boolean;
+  anchor?: string;
+  margin_x?: number;
+  margin_y?: number;
+  size_ratio?: number;
 };
 
 export type SignatureConfig = {
@@ -75,6 +81,9 @@ export type WatermarkConfig = {
   logo: LogoConfig;
   signature: SignatureConfig;
   advanced: AdvancedConfig;
+  // Footer bar position and layout mode
+  footer_position?: 'bottom' | 'top' | 'left' | 'right';
+  layout_mode?: 'corners' | 'sides';
 };
 
 export type FieldOption = {

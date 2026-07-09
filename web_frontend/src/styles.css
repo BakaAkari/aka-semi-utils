@@ -858,6 +858,93 @@ hr, .divider {
   text-transform: uppercase;
 }
 
+.editor-card-h3 {
+  margin-top: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+/* All 4 corners layout */
+.corners-all {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.corner-block {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.corner-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.corner-block-title {
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Small compact labels */
+.small-label {
+  font-size: 12px;
+  gap: 2px;
+}
+.small-label input {
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+/* Advanced collapsible section */
+.advanced-section {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 8px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: color 0.15s;
+}
+.advanced-toggle:hover { color: var(--text); }
+
+.advanced-arrow {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 0.15s;
+  color: var(--text-faint);
+}
+.advanced-arrow.open {
+  transform: rotate(90deg);
+}
+
+.advanced-body {
+  padding: 8px 0 0 0;
+}
+
 /* Chip list — field dropdown + inline remove button */
 .chip-list {
   display: flex;

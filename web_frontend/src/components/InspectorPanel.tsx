@@ -1,4 +1,4 @@
-import { useCallback, useContext, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useRef, useState } from 'react';
 import { AppContext } from '../HomePage';
 import { uploadResource } from '../api';
 import {
@@ -12,83 +12,29 @@ import {
   type WatermarkConfig,
 } from '../watermarkConfig';
 
-type InspectorTab = 'corners' | 'logo' | 'signature' | 'canvas' | 'output' | 'effects';
+type MainTab = 'corners' | 'logo' | 'signature';
 
-const TAB_LABELS: Record<InspectorTab, string> = {
+const MAIN_TAB_LABELS: Record<MainTab, string> = {
   corners: '四角',
   logo: 'Logo',
   signature: '签名',
-  canvas: '画布',
-  output: '输出',
-  effects: '特效',
 };
 
-const TAB_ORDER: InspectorTab[] = ['corners', 'logo', 'signature', 'canvas', 'output', 'effects'];
+const MAIN_TAB_ORDER: MainTab[] = ['corners', 'logo', 'signature'];
 
 export function InspectorPanel() {
   const ctx = useContext(AppContext);
   if (!ctx) return null;
   const { config, setConfig } = ctx;
-  const [tab, setTab] = useState<InspectorTab>('corners');
-  const [activeCorner, setActiveCorner] = useState<CornerKey>('left_top');
-  const [indicatorStyle, setIndicatorStyle] = useState<{ transform: string; width: string }>({ transform: 'translateX(0)', width: '0px' });
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [tab, setTab] = useState<MainTab>('corners');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const updateIndicator = useCallback(() => {
-    const idx = TAB_ORDER.indexOf(tab);
-    const el = tabRefs.current[idx];
-    if (!el) return;
-    const parent = el.parentElement;
-    if (!parent) return;
-    const parentRect = parent.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    setIndicatorStyle({
-      transform: `translateX(${elRect.left - parentRect.left}px)`,
-      width: `${elRect.width}px`,
-    });
-  }, [tab]);
-
-  // Measure indicator position after commit. React 19 ref callback on the
-  // parent container would fire during the render/commit phase and calling
-  // setState from a ref callback caused an infinite loop. Use a layout effect
-  // to read layout and only set state when the values actually change.
-  const latestIndicatorStyleRef = useRef(indicatorStyle);
-  useLayoutEffect(() => {
-    latestIndicatorStyleRef.current = indicatorStyle;
-  }, [indicatorStyle]);
-
-  useLayoutEffect(() => {
-    const parent = tabRefs.current[0]?.parentElement;
-    if (!parent) return;
-
-    const measure = () => {
-      const idx = TAB_ORDER.indexOf(tab);
-      const el = tabRefs.current[idx];
-      if (!el) return;
-      const parentRect = parent.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const next = {
-        transform: `translateX(${elRect.left - parentRect.left}px)`,
-        width: `${elRect.width}px`,
-      };
-      const prev = latestIndicatorStyleRef.current;
-      if (next.transform !== prev.transform || next.width !== prev.width) {
-        latestIndicatorStyleRef.current = next;
-        setIndicatorStyle(next);
-      }
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(parent);
-    return () => ro.disconnect();
-  }, [tab]);
-
+  // --- Helpers ---
   const updateAdvanced = useCallback(
     (patch: Partial<WatermarkConfig['advanced']>) => {
       setConfig((prev) => ({ ...prev, advanced: { ...prev.advanced, ...patch } }));
     },
-    [setConfig]
+    [setConfig],
   );
 
   const updateCorner = useCallback(
@@ -98,7 +44,7 @@ export function InspectorPanel() {
         corners: { ...prev.corners, [cornerKey]: { ...prev.corners[cornerKey], ...patch } },
       }));
     },
-    [setConfig]
+    [setConfig],
   );
 
   const updateChip = useCallback(
@@ -109,7 +55,7 @@ export function InspectorPanel() {
         return { ...prev, corners: { ...prev.corners, [cornerKey]: { ...prev.corners[cornerKey], chips } } };
       });
     },
-    [setConfig]
+    [setConfig],
   );
 
   const addChip = useCallback(
@@ -119,7 +65,7 @@ export function InspectorPanel() {
         return { ...prev, corners: { ...prev.corners, [cornerKey]: { ...prev.corners[cornerKey], chips } } };
       });
     },
-    [setConfig]
+    [setConfig],
   );
 
   const removeChip = useCallback(
@@ -129,7 +75,7 @@ export function InspectorPanel() {
         return { ...prev, corners: { ...prev.corners, [cornerKey]: { ...prev.corners[cornerKey], chips } } };
       });
     },
-    [setConfig]
+    [setConfig],
   );
 
   const handleUploadResource = useCallback(
@@ -153,160 +99,216 @@ export function InspectorPanel() {
         ctx.showToast(err instanceof Error ? err.message : '上传失败', 'error');
       }
     },
-    [setConfig, ctx]
+    [setConfig, ctx],
   );
-
-  const handleTabClick = useCallback((t: InspectorTab) => {
-    setTab(t);
-  }, []);
 
   return (
     <aside className="inspector">
       <div className="inspector-panel">
+        {/* --- Main tabs --- */}
         <div className="inspector-tabs">
-          {TAB_ORDER.map((t, i) => (
+          {MAIN_TAB_ORDER.map((t) => (
             <button
               key={t}
-              ref={(el) => { tabRefs.current[i] = el; }}
               className={`inspector-tab ${tab === t ? 'active' : ''}`}
-              onClick={() => handleTabClick(t)}
+              onClick={() => setTab(t)}
             >
-              {TAB_LABELS[t]}
+              {MAIN_TAB_LABELS[t]}
             </button>
           ))}
-          <div
-            className="tab-indicator"
-            style={{
-              transform: indicatorStyle.transform,
-              width: indicatorStyle.width,
-            }}
-          />
         </div>
+
         <div className="inspector-body">
+          {/* ==== 四角 ==== */}
           <div className={`tab-panel ${tab === 'corners' ? 'active' : ''}`}>
             <CornersTab
               config={config}
-              activeCorner={activeCorner}
-              setActiveCorner={setActiveCorner}
+              setConfig={setConfig}
               updateCorner={updateCorner}
               updateChip={updateChip}
               addChip={addChip}
               removeChip={removeChip}
             />
           </div>
+
+          {/* ==== Logo ==== */}
           <div className={`tab-panel ${tab === 'logo' ? 'active' : ''}`}>
             <LogoTab config={config} setConfig={setConfig} onUpload={handleUploadResource} />
           </div>
+
+          {/* ==== 签名 ==== */}
           <div className={`tab-panel ${tab === 'signature' ? 'active' : ''}`}>
             <SignatureTab config={config} setConfig={setConfig} onUpload={handleUploadResource} />
           </div>
-          <div className={`tab-panel ${tab === 'canvas' ? 'active' : ''}`}>
-            <CanvasTab config={config} updateAdvanced={updateAdvanced} />
-          </div>
-          <div className={`tab-panel ${tab === 'output' ? 'active' : ''}`}>
-            <OutputTab config={config} updateAdvanced={updateAdvanced} />
-          </div>
-          <div className={`tab-panel ${tab === 'effects' ? 'active' : ''}`}>
-            <EffectsTab config={config} updateAdvanced={updateAdvanced} />
-          </div>
+        </div>
+
+        {/* --- 高级 (collapsible) --- */}
+        <div className="advanced-section">
+          <button
+            className="advanced-toggle"
+            onClick={() => setAdvancedOpen((v) => !v)}
+          >
+            <span className={`advanced-arrow ${advancedOpen ? 'open' : ''}`}>▸</span>
+            高级设置
+          </button>
+          {advancedOpen && (
+            <div className="advanced-body">
+              <CanvasTab config={config} updateAdvanced={updateAdvanced} />
+              <OutputTab config={config} updateAdvanced={updateAdvanced} />
+              <EffectsTab config={config} updateAdvanced={updateAdvanced} />
+            </div>
+          )}
         </div>
       </div>
     </aside>
   );
 }
+
+// ============================ 四角 Tab ============================
+
 function CornersTab({
   config,
-  activeCorner,
-  setActiveCorner,
+  setConfig,
   updateCorner,
   updateChip,
   addChip,
   removeChip,
 }: {
   config: WatermarkConfig;
-  activeCorner: CornerKey;
-  setActiveCorner: (c: CornerKey) => void;
+  setConfig: React.Dispatch<React.SetStateAction<WatermarkConfig>>;
   updateCorner: (k: CornerKey, p: Partial<CornerConfig>) => void;
   updateChip: (k: CornerKey, i: number, p: Partial<FieldChip>) => void;
   addChip: (k: CornerKey) => void;
   removeChip: (k: CornerKey, i: number) => void;
 }) {
-  const corner = config.corners[activeCorner];
+  const cornerKeys: CornerKey[] = ['left_top', 'left_bottom', 'right_top', 'right_bottom'];
 
   return (
-    <div className="anim-fade-in">
-      <div className="corner-tabs">
-        {(Object.keys(cornerLabels) as CornerKey[]).map((key) => (
-          <button
+    <div className="anim-fade-in corners-all">
+      {/* --- Footer bar config --- */}
+      <div className="editor-card">
+        <div className="form-row" style={{ gap: 12 }}>
+          <label>
+            底条位置
+            <select
+              value={config.footer_position ?? 'bottom'}
+              onChange={(e) =>
+                setConfig((prev) => ({ ...prev, footer_position: e.target.value as 'bottom' | 'top' | 'left' | 'right' }))
+              }
+            >
+              <option value="bottom">底部</option>
+              <option value="top">顶部</option>
+              <option value="left">左侧</option>
+              <option value="right">右侧</option>
+            </select>
+          </label>
+          <label>
+            布局方案
+            <select
+              value={config.layout_mode ?? 'corners'}
+              onChange={(e) =>
+                setConfig((prev) => ({ ...prev, layout_mode: e.target.value as 'corners' | 'sides' }))
+              }
+            >
+              <option value="corners">四角</option>
+              <option value="sides">左右居中</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {/* --- Corner blocks --- */}
+      {cornerKeys.map((key) => {
+        const corner = config.corners[key];
+        return (
+          <CornerBlock
             key={key}
-            className={`corner-tab ${activeCorner === key ? 'active' : ''}`}
-            onClick={() => setActiveCorner(key)}
-          >
-            {cornerLabels[key]}
-          </button>
+            cornerKey={key}
+            corner={corner}
+            updateCorner={updateCorner}
+            updateChip={updateChip}
+            addChip={addChip}
+            removeChip={removeChip}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function CornerBlock({
+  cornerKey,
+  corner,
+  updateCorner,
+  updateChip,
+  addChip,
+  removeChip,
+}: {
+  cornerKey: CornerKey;
+  corner: CornerConfig;
+  updateCorner: (k: CornerKey, p: Partial<CornerConfig>) => void;
+  updateChip: (k: CornerKey, i: number, p: Partial<FieldChip>) => void;
+  addChip: (k: CornerKey) => void;
+  removeChip: (k: CornerKey, i: number) => void;
+}) {
+  return (
+    <div className="corner-block">
+      <div className="corner-block-header">
+        <span className="corner-block-title">{cornerLabels[cornerKey]}</span>
+        <button className="small" onClick={() => addChip(cornerKey)}>+</button>
+      </div>
+      <div className="chip-list">
+        {corner.chips.length === 0 && <p className="text-tertiary text-sm">—</p>}
+        {corner.chips.map((chip, i) => (
+          <div key={`${cornerKey}-${i}`} className="chip-item">
+            <select
+              value={chip.field_id}
+              onChange={(e) => updateChip(cornerKey, i, { field_id: e.target.value as FieldId })}
+            >
+              {fieldOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            {chip.field_id === 'custom_text' && (
+              <input
+                type="text"
+                value={chip.custom_text ?? ''}
+                placeholder="自定义文本"
+                onChange={(e) => updateChip(cornerKey, i, { custom_text: e.target.value })}
+              />
+            )}
+            <button className="chip-remove" onClick={() => removeChip(cornerKey, i)}>×</button>
+          </div>
         ))}
       </div>
-      <div className="editor-card">
-        <div className="editor-card-title">
-          <h3>{cornerLabels[activeCorner]} 字段</h3>
-          <button className="small" onClick={() => addChip(activeCorner)}>
-            + 添加
-          </button>
-        </div>
-        <div className="chip-list">
-          {corner.chips.length === 0 && <p className="text-tertiary text-sm">未配置字段</p>}
-          {corner.chips.map((chip, i) => (
-            <div key={`${activeCorner}-${i}`} className="chip-item">
-              <select
-                value={chip.field_id}
-                onChange={(e) => updateChip(activeCorner, i, { field_id: e.target.value as FieldId })}
-              >
-                {fieldOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              {chip.field_id === 'custom_text' && (
-                <input
-                  type="text"
-                  value={chip.custom_text ?? ''}
-                  placeholder="自定义文本"
-                  onChange={(e) => updateChip(activeCorner, i, { custom_text: e.target.value })}
-                />
-              )}
-              <button className="chip-remove" onClick={() => removeChip(activeCorner, i)} title="删除">
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="form-row">
-          <label>
-            分隔符
-            <input
-              value={corner.separator}
-              onChange={(e) => updateCorner(activeCorner, { separator: e.target.value })}
-            />
-          </label>
-          <label>
-            字号比例
-            <input
-              type="number"
-              min={0}
-              max={0.2}
-              step={0.005}
-              value={corner.font_size_ratio}
-              onChange={(e) => updateCorner(activeCorner, { font_size_ratio: parseFloat(e.target.value) || 0 })}
-            />
-          </label>
-        </div>
+      <div className="form-row" style={{ gap: 8, marginTop: 8 }}>
+        <label className="small-label">
+          分隔符
+          <input
+            value={corner.separator}
+            onChange={(e) => updateCorner(cornerKey, { separator: e.target.value })}
+            style={{ width: 60 }}
+          />
+        </label>
+        <label className="small-label">
+          字号
+          <input
+            type="number"
+            min={0}
+            max={0.2}
+            step={0.005}
+            value={corner.font_size_ratio}
+            onChange={(e) => updateCorner(cornerKey, { font_size_ratio: parseFloat(e.target.value) || 0 })}
+            style={{ width: 55 }}
+          />
+        </label>
       </div>
     </div>
   );
 }
 
-// ==================== Logo Tab ====================
+// ============================ Logo Tab ============================
+
 function LogoTab({
   config,
   setConfig,
@@ -317,17 +319,22 @@ function LogoTab({
   onUpload: (file: File, kind: 'logo' | 'signature') => Promise<void>;
 }) {
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const logo = config.logo;
 
   return (
     <div className="anim-fade-in">
       <div className="editor-card">
-        <h3 style={{ marginTop: 0, fontSize: 13, fontWeight: 600 }}>Logo 设置</h3>
+        <h3 className="editor-card-h3">Logo 设置</h3>
+
         <label>
           模式
           <select
-            value={config.logo.enabled}
+            value={logo.enabled}
             onChange={(e) =>
-              setConfig((prev) => ({ ...prev, logo: { ...prev.logo, enabled: e.target.value as 'auto' | 'disabled' | 'custom' } }))
+              setConfig((prev) => ({
+                ...prev,
+                logo: { ...prev.logo, enabled: e.target.value as 'auto' | 'disabled' | 'custom' },
+              }))
             }
           >
             <option value="disabled">关闭</option>
@@ -336,43 +343,130 @@ function LogoTab({
           </select>
         </label>
 
-        <label>
-          位置
-          <select
-            value={config.logo.position}
-            onChange={(e) =>
-              setConfig((prev) => ({ ...prev, logo: { ...prev.logo, position: e.target.value as 'left' | 'center' | 'right' } }))
-            }
-          >
-            <option value="left">左侧</option>
-            <option value="center">中间</option>
-            <option value="right">右侧</option>
-          </select>
-        </label>
-
+        {/* Free positioning toggle */}
         <label className="inline">
-          分隔线颜色
           <input
-            type="color"
-            value={config.logo.color}
-            onChange={(e) => setConfig((prev) => ({ ...prev, logo: { ...prev.logo, color: e.target.value } }))}
-            style={{ width: 60, height: 32, padding: 2 }}
+            type="checkbox"
+            checked={logo.free_position ?? false}
+            onChange={(e) =>
+              setConfig((prev) => ({
+                ...prev,
+                logo: { ...prev.logo, free_position: e.target.checked },
+              }))
+            }
           />
+          <span>自由定位</span>
         </label>
 
-        <label>
-          Logo 高度 (px, 0=自动)
-          <input
-            type="number"
-            min={0}
-            max={240}
-            step={4}
-            value={config.advanced.logo_height_px}
-            onChange={(e) => setConfig((prev) => ({ ...prev, advanced: { ...prev.advanced, logo_height_px: Number(e.target.value) } }))}
-          />
-        </label>
+        {logo.free_position ? (
+          <>
+            <label>
+              位置锚点
+              <select
+                value={logo.anchor ?? 'middle_center'}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    logo: { ...prev.logo, anchor: e.target.value },
+                  }))
+                }
+              >
+                {(Object.keys(anchorLabels) as Array<keyof typeof anchorLabels>).map((a) => (
+                  <option key={a} value={a}>{anchorLabels[a]}</option>
+                ))}
+              </select>
+            </label>
+            <div className="form-row">
+              <label>
+                X 偏移
+                <input
+                  type="number"
+                  min={-0.5} max={0.5} step={0.01}
+                  value={logo.margin_x ?? 0}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      logo: { ...prev.logo, margin_x: parseFloat(e.target.value) || 0 },
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Y 偏移
+                <input
+                  type="number"
+                  min={-0.5} max={0.5} step={0.01}
+                  value={logo.margin_y ?? 0}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      logo: { ...prev.logo, margin_y: parseFloat(e.target.value) || 0 },
+                    }))
+                  }
+                />
+              </label>
+            </div>
+            <label>
+              大小比例
+              <input
+                type="number"
+                min={0.01} max={1} step={0.01}
+                value={logo.size_ratio ?? 0.2}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    logo: { ...prev.logo, size_ratio: parseFloat(e.target.value) || 0.2 },
+                  }))
+                }
+              />
+              <span className="label-note">占照片短边比例</span>
+            </label>
+          </>
+        ) : (
+          <>
+            <label>
+              位置
+              <select
+                value={logo.position}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    logo: { ...prev.logo, position: e.target.value as 'left' | 'center' | 'right' },
+                  }))
+                }
+              >
+                <option value="left">左侧</option>
+                <option value="center">中间</option>
+                <option value="right">右侧</option>
+              </select>
+            </label>
+            <label className="inline">
+              分隔线颜色
+              <input
+                type="color"
+                value={logo.color}
+                onChange={(e) => setConfig((prev) => ({ ...prev, logo: { ...prev.logo, color: e.target.value } }))}
+                style={{ width: 60, height: 32, padding: 2 }}
+              />
+            </label>
+            <label>
+              Logo 高度 (px, 0=自动)
+              <input
+                type="number"
+                min={0} max={240} step={4}
+                value={config.advanced.logo_height_px}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    advanced: { ...prev.advanced, logo_height_px: Number(e.target.value) },
+                  }))
+                }
+              />
+            </label>
+          </>
+        )}
 
-        {config.logo.enabled === 'custom' && (
+        {logo.enabled === 'custom' && (
           <div className="file-upload-item" onClick={() => logoInputRef.current?.click()}>
             <input
               ref={logoInputRef}
@@ -384,7 +478,7 @@ function LogoTab({
               }}
             />
             <span className="text-secondary text-sm">
-              {config.logo.custom_path ? '已上传自定义 Logo' : '点击上传自定义 Logo'}
+              {logo.custom_path ? '已上传自定义 Logo' : '点击上传自定义 Logo'}
             </span>
           </div>
         )}
@@ -393,7 +487,8 @@ function LogoTab({
   );
 }
 
-// ==================== Signature Tab ====================
+// ============================ 签名 Tab ============================
+
 function SignatureTab({
   config,
   setConfig,
@@ -410,13 +505,13 @@ function SignatureTab({
     (patch: Partial<WatermarkConfig['signature']>) => {
       setConfig((prev) => ({ ...prev, signature: { ...prev.signature, ...patch } }));
     },
-    [setConfig]
+    [setConfig],
   );
 
   return (
     <div className="anim-fade-in">
       <div className="editor-card">
-        <h3 style={{ marginTop: 0, fontSize: 13, fontWeight: 600 }}>签名水印</h3>
+        <h3 className="editor-card-h3">签名水印</h3>
 
         <label className="inline">
           <input
@@ -464,8 +559,7 @@ function SignatureTab({
                 增强强度
                 <input
                   type="range"
-                  min={0}
-                  max={100}
+                  min={0} max={100}
                   value={sig.enhancement_strength}
                   onChange={(e) => updateSig({ enhancement_strength: Number(e.target.value) })}
                 />
@@ -491,12 +585,10 @@ function SignatureTab({
               <label>
                 X 偏移
                 <input type="number" min={-0.5} max={0.5} step={0.01} value={sig.margin_x} onChange={(e) => updateSig({ margin_x: parseFloat(e.target.value) || 0 })} />
-                <span className="label-note">比例</span>
               </label>
               <label>
                 Y 偏移
                 <input type="number" min={-0.5} max={0.5} step={0.01} value={sig.margin_y} onChange={(e) => updateSig({ margin_y: parseFloat(e.target.value) || 0 })} />
-                <span className="label-note">比例</span>
               </label>
             </div>
           </>
@@ -506,7 +598,8 @@ function SignatureTab({
   );
 }
 
-// ==================== Canvas Tab ====================
+// ============================ Canvas / Output / Effects (高级) ============================
+
 function CanvasTab({
   config,
   updateAdvanced,
@@ -516,39 +609,36 @@ function CanvasTab({
 }) {
   const a = config.advanced;
   return (
-    <div className="anim-fade-in">
-      <div className="editor-card">
-        <h3 style={{ marginTop: 0, fontSize: 13, fontWeight: 600 }}>画布与水印条</h3>
-        <label>
-          底部水印条高度 (px)
-          <input type="number" min={40} max={500} step={10} value={a.footer_height_px} onChange={(e) => updateAdvanced({ footer_height_px: Number(e.target.value) })} />
-        </label>
-        <label>
-          全局角字号比例
-          <input type="number" min={0} max={0.2} step={0.005} value={a.corner_text_ratio} onChange={(e) => updateAdvanced({ corner_text_ratio: parseFloat(e.target.value) || 0 })} />
-        </label>
-        <label className="inline">
-          文字颜色
-          <input type="color" value={a.global_color} onChange={(e) => updateAdvanced({ global_color: e.target.value })} style={{ width: 60, height: 32, padding: 2 }} />
-        </label>
-        <label className="inline">
-          留白颜色
-          <input type="color" value={a.margin_color} onChange={(e) => updateAdvanced({ margin_color: e.target.value })} style={{ width: 60, height: 32, padding: 2 }} />
-        </label>
-        <div className="form-row">
-          <label>左边距 <input type="number" min={0} max={500} value={a.left_margin} onChange={(e) => updateAdvanced({ left_margin: Number(e.target.value) })} /></label>
-          <label>右边距 <input type="number" min={0} max={500} value={a.right_margin} onChange={(e) => updateAdvanced({ right_margin: Number(e.target.value) })} /></label>
-        </div>
-        <div className="form-row">
-          <label>上边距 <input type="number" min={0} max={500} value={a.top_margin} onChange={(e) => updateAdvanced({ top_margin: Number(e.target.value) })} /></label>
-          <label>下边距 <input type="number" min={0} max={500} value={a.bottom_margin} onChange={(e) => updateAdvanced({ bottom_margin: Number(e.target.value) })} /></label>
-        </div>
+    <div className="editor-card">
+      <h3 className="editor-card-h3">画布与水印条</h3>
+      <label>
+        底部水印条高度 (px)
+        <input type="number" min={40} max={500} step={10} value={a.footer_height_px} onChange={(e) => updateAdvanced({ footer_height_px: Number(e.target.value) })} />
+      </label>
+      <label>
+        全局角字号比例
+        <input type="number" min={0} max={0.2} step={0.005} value={a.corner_text_ratio} onChange={(e) => updateAdvanced({ corner_text_ratio: parseFloat(e.target.value) || 0 })} />
+      </label>
+      <label className="inline">
+        文字颜色
+        <input type="color" value={a.global_color} onChange={(e) => updateAdvanced({ global_color: e.target.value })} style={{ width: 60, height: 32, padding: 2 }} />
+      </label>
+      <label className="inline">
+        留白颜色
+        <input type="color" value={a.margin_color} onChange={(e) => updateAdvanced({ margin_color: e.target.value })} style={{ width: 60, height: 32, padding: 2 }} />
+      </label>
+      <div className="form-row">
+        <label>左边距 <input type="number" min={0} max={500} value={a.left_margin} onChange={(e) => updateAdvanced({ left_margin: Number(e.target.value) })} /></label>
+        <label>右边距 <input type="number" min={0} max={500} value={a.right_margin} onChange={(e) => updateAdvanced({ right_margin: Number(e.target.value) })} /></label>
+      </div>
+      <div className="form-row">
+        <label>上边距 <input type="number" min={0} max={500} value={a.top_margin} onChange={(e) => updateAdvanced({ top_margin: Number(e.target.value) })} /></label>
+        <label>下边距 <input type="number" min={0} max={500} value={a.bottom_margin} onChange={(e) => updateAdvanced({ bottom_margin: Number(e.target.value) })} /></label>
       </div>
     </div>
   );
 }
 
-// ==================== Output Tab ====================
 function OutputTab({
   config,
   updateAdvanced,
@@ -558,48 +648,45 @@ function OutputTab({
 }) {
   const a = config.advanced;
   return (
-    <div className="anim-fade-in">
-      <div className="editor-card">
-        <h3 style={{ marginTop: 0, fontSize: 13, fontWeight: 600 }}>输出与变换</h3>
+    <div className="editor-card">
+      <h3 className="editor-card-h3">输出与变换</h3>
+      <label>
+        JPEG 质量
+        <input type="number" min={1} max={100} value={a.quality} onChange={(e) => updateAdvanced({ quality: Number(e.target.value) })} />
+      </label>
+      <label>
+        色度采样
+        <select value={a.subsampling} onChange={(e) => updateAdvanced({ subsampling: Number(e.target.value) })}>
+          <option value={0}>0 — 高质量</option>
+          <option value={1}>1</option>
+          <option value={2}>2 — 文件更小</option>
+        </select>
+      </label>
+      <label>
+        缩放比例
+        <input type="number" min={0.05} max={3} step={0.05} value={a.scale} onChange={(e) => updateAdvanced({ scale: parseFloat(e.target.value) || 1 })} />
+      </label>
+      <div className="form-row">
         <label>
-          JPEG 质量
-          <input type="number" min={1} max={100} value={a.quality} onChange={(e) => updateAdvanced({ quality: Number(e.target.value) })} />
-        </label>
-        <label>
-          色度采样
-          <select value={a.subsampling} onChange={(e) => updateAdvanced({ subsampling: Number(e.target.value) })}>
-            <option value={0}>0 — 高质量</option>
-            <option value={1}>1</option>
-            <option value={2}>2 — 文件更小</option>
+          拼接方向
+          <select value={a.concat_direction} onChange={(e) => updateAdvanced({ concat_direction: e.target.value as 'horizontal' | 'vertical' })}>
+            <option value="vertical">垂直</option>
+            <option value="horizontal">水平</option>
           </select>
         </label>
         <label>
-          缩放比例
-          <input type="number" min={0.05} max={3} step={0.05} value={a.scale} onChange={(e) => updateAdvanced({ scale: parseFloat(e.target.value) || 1 })} />
+          对齐方式
+          <select value={a.alignment_mode} onChange={(e) => updateAdvanced({ alignment_mode: e.target.value as 'top' | 'center' | 'bottom' })}>
+            <option value="top">顶部</option>
+            <option value="center">居中</option>
+            <option value="bottom">底部</option>
+          </select>
         </label>
-        <div className="form-row">
-          <label>
-            拼接方向
-            <select value={a.concat_direction} onChange={(e) => updateAdvanced({ concat_direction: e.target.value as 'horizontal' | 'vertical' })}>
-              <option value="vertical">垂直</option>
-              <option value="horizontal">水平</option>
-            </select>
-          </label>
-          <label>
-            对齐方式
-            <select value={a.alignment_mode} onChange={(e) => updateAdvanced({ alignment_mode: e.target.value as 'top' | 'center' | 'bottom' })}>
-              <option value="top">顶部</option>
-              <option value="center">居中</option>
-              <option value="bottom">底部</option>
-            </select>
-          </label>
-        </div>
       </div>
     </div>
   );
 }
 
-// ==================== Effects Tab ====================
 function EffectsTab({
   config,
   updateAdvanced,
@@ -609,42 +696,40 @@ function EffectsTab({
 }) {
   const a = config.advanced;
   return (
-    <div className="anim-fade-in">
-      <div className="editor-card">
-        <h3 style={{ marginTop: 0, fontSize: 13, fontWeight: 600 }}>特效</h3>
-        <label>
-          圆角半径
-          <input type="number" min={0} max={160} step={2} value={a.border_radius} onChange={(e) => updateAdvanced({ border_radius: Number(e.target.value) })} />
-        </label>
-        <label>
-          阴影半径
-          <input type="number" min={0} max={160} step={2} value={a.shadow_radius} onChange={(e) => updateAdvanced({ shadow_radius: Number(e.target.value) })} />
-        </label>
-        <label className="inline">
-          阴影颜色
-          <input type="color" value={a.shadow_color} onChange={(e) => updateAdvanced({ shadow_color: e.target.value })} style={{ width: 60, height: 32, padding: 2 }} />
-        </label>
-        <label>
-          背景模糊
-          <input type="number" min={0} max={80} step={1} value={a.blur_radius} onChange={(e) => updateAdvanced({ blur_radius: Number(e.target.value) })} />
-        </label>
-        <label className="inline">
-          <input type="checkbox" checked={a.trim_enabled} onChange={(e) => updateAdvanced({ trim_enabled: e.target.checked })} />
-          <span>启用裁边</span>
-        </label>
-        <label>
-          裁边阈值
-          <input type="number" min={0} max={255} step={1} value={a.trim_threshold} onChange={(e) => updateAdvanced({ trim_threshold: Number(e.target.value) })} />
-        </label>
-        <label className="inline">
-          <input type="checkbox" checked={a.ratio_enabled} onChange={(e) => updateAdvanced({ ratio_enabled: e.target.checked })} />
-          <span>启用比例画布</span>
-        </label>
-        <label>
-          目标比例
-          <input value={a.ratio} onChange={(e) => updateAdvanced({ ratio: e.target.value })} placeholder="如 3:4 或 16:9" />
-        </label>
-      </div>
+    <div className="editor-card">
+      <h3 className="editor-card-h3">特效</h3>
+      <label>
+        圆角半径
+        <input type="number" min={0} max={160} step={2} value={a.border_radius} onChange={(e) => updateAdvanced({ border_radius: Number(e.target.value) })} />
+      </label>
+      <label>
+        阴影半径
+        <input type="number" min={0} max={160} step={2} value={a.shadow_radius} onChange={(e) => updateAdvanced({ shadow_radius: Number(e.target.value) })} />
+      </label>
+      <label className="inline">
+        阴影颜色
+        <input type="color" value={a.shadow_color} onChange={(e) => updateAdvanced({ shadow_color: e.target.value })} style={{ width: 60, height: 32, padding: 2 }} />
+      </label>
+      <label>
+        背景模糊
+        <input type="number" min={0} max={80} step={1} value={a.blur_radius} onChange={(e) => updateAdvanced({ blur_radius: Number(e.target.value) })} />
+      </label>
+      <label className="inline">
+        <input type="checkbox" checked={a.trim_enabled} onChange={(e) => updateAdvanced({ trim_enabled: e.target.checked })} />
+        <span>启用裁边</span>
+      </label>
+      <label>
+        裁边阈值
+        <input type="number" min={0} max={255} step={1} value={a.trim_threshold} onChange={(e) => updateAdvanced({ trim_threshold: Number(e.target.value) })} />
+      </label>
+      <label className="inline">
+        <input type="checkbox" checked={a.ratio_enabled} onChange={(e) => updateAdvanced({ ratio_enabled: e.target.checked })} />
+        <span>启用比例画布</span>
+      </label>
+      <label>
+        目标比例
+        <input value={a.ratio} onChange={(e) => updateAdvanced({ ratio: e.target.value })} placeholder="如 3:4 或 16:9" />
+      </label>
     </div>
   );
 }

@@ -47,6 +47,14 @@ class LogoPayload(StrictModel):
         max_length=128,
         pattern=r"^(?:[A-Za-z0-9_-]{20,64}\.(?:png|jpg|jpeg|webp))?$",
     )
+    free_position: bool = False
+    anchor: Literal[
+        "top_left", "top_center", "top_right", "middle_left", "middle_center",
+        "middle_right", "bottom_left", "bottom_center", "bottom_right",
+    ] = "middle_center"
+    margin_x: float = Field(default=0.0, ge=-0.5, le=0.5)
+    margin_y: float = Field(default=0.0, ge=-0.5, le=0.5)
+    size_ratio: float = Field(default=0.2, ge=0.01, le=1.0)
 
     @field_validator("color")
     @classmethod
@@ -117,6 +125,8 @@ class WatermarkPayload(StrictModel):
     signature: SignaturePayload = Field(default_factory=SignaturePayload)
     advanced: AdvancedPayload = Field(default_factory=AdvancedPayload)
     custom_text: str = Field(default="", max_length=160)
+    footer_position: Literal["bottom", "top", "left", "right"] = "bottom"
+    layout_mode: Literal["corners", "sides"] = "corners"
 
 
 def _validate_color(value: str) -> str:
@@ -152,6 +162,8 @@ def config_from_payload(payload: dict[str, Any] | None) -> WatermarkConfig:
         signature=SignatureConfig(**parsed.signature.model_dump()),
         advanced=AdvancedConfig(**parsed.advanced.model_dump()),
         custom_text=parsed.custom_text,
+        footer_position=parsed.footer_position,
+        layout_mode=parsed.layout_mode,
     )
 
 

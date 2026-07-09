@@ -37,6 +37,12 @@ class LogoConfig:
     position: str = "right"  # right / center / left
     color: str = "#D8D8D6"
     custom_path: str = ""
+    # Free-positioning mode (脱离底条自由定位)
+    free_position: bool = False
+    anchor: str = "middle_center"
+    margin_x: float = 0.0
+    margin_y: float = 0.0
+    size_ratio: float = 0.20
 
 
 @dataclass
@@ -121,6 +127,8 @@ class WatermarkConfig:
     custom_text: str = ""
     signature: SignatureConfig = field(default_factory=SignatureConfig)
     advanced: AdvancedConfig = field(default_factory=AdvancedConfig)
+    footer_position: str = "bottom"
+    layout_mode: str = "corners"
 
 
 T = TypeVar("T")

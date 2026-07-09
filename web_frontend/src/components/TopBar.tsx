@@ -5,9 +5,18 @@ export function TopBar() {
   const ctx = useContext(AppContext);
   if (!ctx) return null;
 
-  const { files, status, message, result, batchResults, runPreview, runProcess, runProcessAll, progress, clearBatchResults } = ctx;
+  const { files, status, message, result, batchResults, progress, runProcess, runProcessAll, clearBatchResults } = ctx;
   const hasFiles = files.length > 0;
   const isRunning = status === 'running';
+  const isMulti = files.length > 1;
+
+  const handleProcess = useCallback(() => {
+    if (isMulti) {
+      void runProcessAll();
+    } else {
+      void runProcess();
+    }
+  }, [isMulti, runProcess, runProcessAll]);
 
   const downloadBatch = useCallback(() => {
     batchResults.forEach((file, i) => {
@@ -60,16 +69,12 @@ export function TopBar() {
           </div>
         )}
 
-        <button className="ghost" disabled={!hasFiles || isRunning} onClick={() => void runPreview()} title="刷新预览">
-          ↻ Preview
-        </button>
-
-        <button className="primary" disabled={!hasFiles || isRunning} onClick={() => void runProcess()}>
-          Process
-        </button>
-
-        <button className="primary" disabled={!hasFiles || isRunning} onClick={() => void runProcessAll()}>
-          Process All
+        <button
+          className="primary"
+          disabled={!hasFiles || isRunning}
+          onClick={handleProcess}
+        >
+          {isMulti ? `Process All (${files.length})` : 'Process'}
         </button>
 
         {batchResults.length > 0 && (
@@ -77,13 +82,11 @@ export function TopBar() {
             <button className="success" onClick={downloadBatch} title={`下载全部 ${batchResults.length} 张`}>
               ↓ All ({batchResults.length})
             </button>
-            <button className="ghost micro" onClick={clearBatchResults} title="清除">
-              ✕
-            </button>
+            <button className="ghost micro" onClick={clearBatchResults} title="清除">✕</button>
           </>
         )}
 
-        {result && (
+        {result && !isMulti && (
           <a className="btn success" href={result.download_url} download={result.download_filename || result.filename}>
             ↓ Download
           </a>
