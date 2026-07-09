@@ -155,7 +155,7 @@ def public_file_payload(path: Path) -> dict[str, str]:
 
     return {
         "filename": path.name,
-        "download_url": f"/api/files/{path.name}",
+        "download_url": f"/tools/watermark/api/files/{path.name}",
     }
 
 

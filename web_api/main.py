@@ -40,20 +40,9 @@ _job_slots = asyncio.Semaphore(max(1, settings.max_concurrent_jobs))
 # Serve fonts as static files
 _fonts_dir = Path(__file__).parent.parent / "config" / "fonts"
 if _fonts_dir.exists():
-    app.mount("/api/fonts", StaticFiles(directory=str(_fonts_dir)), name="fonts")
+    app.mount("/tools/watermark/api/fonts", StaticFiles(directory=str(_fonts_dir)), name="fonts")
 
-# Serve web frontend static files (production build)
-_web_dist = Path(__file__).parent.parent / "web_frontend" / "dist"
-if _web_dist.exists():
-    from fastapi.responses import HTMLResponse
-
-    _static_files = StaticFiles(directory=str(_web_dist), html=True)
-    app.mount("/semi-utils", _static_files, name="web_frontend")
-
-    @app.get("/semi-utils/{path:path}")
-    async def spa_fallback(_path: str) -> HTMLResponse:
-        """SPA fallback: serve index.html for any unmatched route."""
-        return HTMLResponse(content=(_web_dist / "index.html").read_text())
+# Frontend static files are served by Caddy; API only serves fonts and endpoints here.
 
 
 @app.exception_handler(ApiError)
@@ -63,14 +52,14 @@ async def api_error_handler(_request: Request, exc: ApiError) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=exc.to_payload())
 
 
-@app.get("/api/health")
+@app.get("/tools/watermark/api/health")
 def health() -> dict[str, Any]:
     """Health check for local, Caddy, and systemd probes."""
 
     return success_response(status="ok")
 
 
-@app.post("/api/_visit")
+@app.post("/tools/watermark/api/_visit")
 async def visit_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
     """Record a visitor fingerprint."""
     visitor_id = payload.get("visitor_id", "")
@@ -80,7 +69,7 @@ async def visit_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
     return success_response(new=new)
 
 
-@app.get("/api/_stats")
+@app.get("/tools/watermark/api/_stats")
 def stats_endpoint(request: Request) -> dict[str, Any]:
     """Return full statistics (requires X-Dev-Password header)."""
     password = request.headers.get("X-Dev-Password", "")
@@ -89,13 +78,13 @@ def stats_endpoint(request: Request) -> dict[str, Any]:
     return stats.get_stats()
 
 
-@app.get("/api/_stats/health")
+@app.get("/tools/watermark/api/_stats/health")
 def stats_health() -> dict[str, Any]:
     """Check stats database connectivity."""
     return stats.health_check()
 
 
-@app.post("/api/uploads")
+@app.post("/tools/watermark/api/uploads")
 async def upload_image(file: UploadFile = File(...)) -> dict[str, Any]:
     """Upload an input image once and return an expiring opaque id."""
 
@@ -107,7 +96,7 @@ async def upload_image(file: UploadFile = File(...)) -> dict[str, Any]:
     )
 
 
-@app.post("/api/upload-resource")
+@app.post("/tools/watermark/api/upload-resource")
 async def upload_resource(
     file: UploadFile = File(...),
     kind: str = Form(default="logo"),  # "logo" or "signature"
@@ -122,7 +111,7 @@ async def upload_resource(
     )
 
 
-@app.post("/api/process")
+@app.post("/tools/watermark/api/process")
 async def process_endpoint(
     file: UploadFile | None = File(default=None),
     image_id: str = Form(default=""),
@@ -137,7 +126,7 @@ async def process_endpoint(
     )
 
 
-@app.post("/api/preview")
+@app.post("/tools/watermark/api/preview")
 async def preview_endpoint(
     file: UploadFile | None = File(default=None),
     image_id: str = Form(default=""),
@@ -152,7 +141,7 @@ async def preview_endpoint(
     )
 
 
-@app.get("/api/files/{filename}")
+@app.get("/tools/watermark/api/files/{filename}")
 def get_output_file(filename: str) -> FileResponse:
     """Download a generated output or uploaded resource by server-side filename."""
 
@@ -160,7 +149,7 @@ def get_output_file(filename: str) -> FileResponse:
     return FileResponse(path, filename=path.name)
 
 
-@app.post("/api/batch-download")
+@app.post("/tools/watermark/api/batch-download")
 async def batch_download_endpoint(payload: dict[str, Any], background_tasks: BackgroundTasks) -> FileResponse:
     """Download multiple processed images as a zip archive."""
 

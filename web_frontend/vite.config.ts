@@ -3,10 +3,10 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/',
+  base: '/tools/watermark/',
   server: {
     proxy: {
-      '/api': 'http://127.0.0.1:2189'
+      '/tools/watermark/api': 'http://127.0.0.1:2189'
     }
   }
 });

@@ -46,7 +46,7 @@ def _post_image(endpoint: str, image_path: Path, config: dict | None = None):
 
 
 def test_health() -> None:
-    response = client.get("/api/health")
+    response = client.get("/tools/watermark/api/health")
     assert response.status_code == 200
     assert response.json() == {"ok": True, "status": "ok"}
 
@@ -54,7 +54,7 @@ def test_health() -> None:
 def test_process_image_generates_downloadable_file(tmp_path: Path) -> None:
     image_path = _make_image(tmp_path / "input.jpg")
 
-    response = _post_image("/api/process", image_path)
+    response = _post_image("/tools/watermark/api/process", image_path)
 
     assert response.status_code == 200
     payload = response.json()
@@ -71,7 +71,7 @@ def test_process_image_generates_downloadable_file(tmp_path: Path) -> None:
 def test_preview_image_generates_downloadable_file(tmp_path: Path) -> None:
     image_path = _make_image(tmp_path / "input.jpg", size=(900, 600))
 
-    response = _post_image("/api/preview", image_path)
+    response = _post_image("/tools/watermark/api/preview", image_path)
 
     assert response.status_code == 200
     payload = response.json()
@@ -99,7 +99,7 @@ def test_web_api_renders_exif_jinja_before_processing(tmp_path: Path, monkeypatc
     monkeypatch.setattr(web_processing, "start_process", fake_start_process)
 
     response = _post_image(
-        "/api/process",
+        "/tools/watermark/api/process",
         image_path,
         {
             "corners": {
@@ -134,7 +134,7 @@ def test_process_pixel_limit_message_is_actionable(tmp_path: Path, monkeypatch) 
     )
     monkeypatch.setattr(web_main, "settings", test_settings)
 
-    response = _post_image("/api/process", image_path)
+    response = _post_image("/tools/watermark/api/process", image_path)
 
     assert response.status_code == 413
     payload = response.json()
@@ -157,7 +157,7 @@ def test_preview_uses_separate_larger_pixel_limit(tmp_path: Path, monkeypatch) -
     )
     monkeypatch.setattr(web_main, "settings", test_settings)
 
-    response = _post_image("/api/preview", image_path)
+    response = _post_image("/tools/watermark/api/preview", image_path)
 
     assert response.status_code == 200
     assert response.json()["ok"] is True
@@ -182,7 +182,7 @@ def test_rejects_invalid_config_json(tmp_path: Path) -> None:
     image_path = _make_image(tmp_path / "input.jpg")
     with image_path.open("rb") as file:
         response = client.post(
-            "/api/process",
+            "/tools/watermark/api/process",
             files={"file": ("input.jpg", file, "image/jpeg")},
             data={"config": "{"},
         )
@@ -196,7 +196,7 @@ def test_rejects_unsupported_extension(tmp_path: Path) -> None:
     file_path.write_text("not an image", encoding="utf-8")
     with file_path.open("rb") as file:
         response = client.post(
-            "/api/process",
+            "/tools/watermark/api/process",
             files={"file": ("input.txt", file, "text/plain")},
             data={"config": json.dumps(_minimal_config())},
         )
@@ -215,7 +215,7 @@ def test_custom_text_is_never_evaluated_as_jinja(tmp_path: Path, monkeypatch) ->
 
     monkeypatch.setattr(web_processing, "start_process", fake_start_process)
     response = _post_image(
-        "/api/process",
+        "/tools/watermark/api/process",
         image_path,
         {
             "corners": {
@@ -241,7 +241,7 @@ def test_rejects_arbitrary_server_resource_path(tmp_path: Path) -> None:
         "custom_path": "/etc/passwd",
     }
 
-    response = _post_image("/api/process", image_path, config)
+    response = _post_image("/tools/watermark/api/process", image_path, config)
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_config"
@@ -250,11 +250,11 @@ def test_rejects_arbitrary_server_resource_path(tmp_path: Path) -> None:
 def test_upload_once_then_process_by_image_id(tmp_path: Path) -> None:
     image_path = _make_image(tmp_path / "reused.jpg")
     with image_path.open("rb") as file:
-        upload = client.post("/api/uploads", files={"file": (image_path.name, file, "image/jpeg")})
+        upload = client.post("/tools/watermark/api/uploads", files={"file": (image_path.name, file, "image/jpeg")})
     assert upload.status_code == 200
 
     response = client.post(
-        "/api/preview",
+        "/tools/watermark/api/preview",
         data={"image_id": upload.json()["image_id"], "config": json.dumps(_minimal_config())},
     )
 

@@ -71,7 +71,7 @@ async function ensureUploaded(file: File, signal?: AbortSignal): Promise<{ image
   const request = (async () => {
     const form = new FormData();
     form.append('file', file);
-    const response = await fetch('/api/uploads', { method: 'POST', body: form, signal });
+    const response = await fetch('/tools/watermark/api/uploads', { method: 'POST', body: form, signal });
     const payload = (await response.json()) as UploadResponse | ApiErrorResponse;
     if (!response.ok || !payload.ok) {
       throw new Error((payload as ApiErrorResponse).error?.message || `上传失败：${response.status}`);
@@ -90,7 +90,7 @@ async function ensureUploaded(file: File, signal?: AbortSignal): Promise<{ image
 }
 
 export async function processImage(
-  endpoint: '/api/process' | '/api/preview',
+  endpoint: '/tools/watermark/api/process' | '/tools/watermark/api/preview',
   file: File,
   config: WatermarkConfig,
   signal?: AbortSignal
@@ -113,7 +113,7 @@ export async function uploadResource(file: File, kind: 'logo' | 'signature'): Pr
   const form = new FormData();
   form.append('file', file);
   form.append('kind', kind);
-  const response = await fetch('/api/upload-resource', { method: 'POST', body: form });
+  const response = await fetch('/tools/watermark/api/upload-resource', { method: 'POST', body: form });
   const payload = (await response.json()) as ResourceUploadResponse | ApiErrorResponse;
   if (!response.ok || !payload.ok) {
     throw new Error((payload as ApiErrorResponse).error?.message || `上传失败：${response.status}`);
@@ -126,7 +126,7 @@ export function toDownloadUrl(file: ApiFile): string {
 }
 
 export async function postVisit(visitorId: string): Promise<VisitResponse> {
-  const response = await fetch('/api/_visit', {
+  const response = await fetch('/tools/watermark/api/_visit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ visitor_id: visitorId }),
@@ -139,7 +139,7 @@ export async function postVisit(visitorId: string): Promise<VisitResponse> {
 }
 
 export async function getStats(password: string): Promise<StatsResponse> {
-  const response = await fetch('/api/_stats', {
+  const response = await fetch('/tools/watermark/api/_stats', {
     headers: { 'X-Dev-Password': password },
   });
   const payload = (await response.json()) as StatsResponse | ApiErrorResponse;

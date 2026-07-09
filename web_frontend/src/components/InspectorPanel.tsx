@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useLayoutEffect, useRef, useState } from 'react';
 import { AppContext } from '../HomePage';
 import { uploadResource } from '../api';
 import {
@@ -48,13 +48,41 @@ export function InspectorPanel() {
     });
   }, [tab]);
 
-  useEffect(() => {
-    updateIndicator();
-    const ro = new ResizeObserver(() => updateIndicator());
+  // Measure indicator position after commit. React 19 ref callback on the
+  // parent container would fire during the render/commit phase and calling
+  // setState from a ref callback caused an infinite loop. Use a layout effect
+  // to read layout and only set state when the values actually change.
+  const latestIndicatorStyleRef = useRef(indicatorStyle);
+  useLayoutEffect(() => {
+    latestIndicatorStyleRef.current = indicatorStyle;
+  }, [indicatorStyle]);
+
+  useLayoutEffect(() => {
     const parent = tabRefs.current[0]?.parentElement;
-    if (parent) ro.observe(parent);
+    if (!parent) return;
+
+    const measure = () => {
+      const idx = TAB_ORDER.indexOf(tab);
+      const el = tabRefs.current[idx];
+      if (!el) return;
+      const parentRect = parent.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const next = {
+        transform: `translateX(${elRect.left - parentRect.left}px)`,
+        width: `${elRect.width}px`,
+      };
+      const prev = latestIndicatorStyleRef.current;
+      if (next.transform !== prev.transform || next.width !== prev.width) {
+        latestIndicatorStyleRef.current = next;
+        setIndicatorStyle(next);
+      }
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(parent);
     return () => ro.disconnect();
-  }, [updateIndicator]);
+  }, [tab]);
 
   const updateAdvanced = useCallback(
     (patch: Partial<WatermarkConfig['advanced']>) => {
@@ -135,7 +163,7 @@ export function InspectorPanel() {
   return (
     <aside className="inspector">
       <div className="inspector-panel">
-        <div className="inspector-tabs" ref={(el) => { if (el) updateIndicator(); }}>
+        <div className="inspector-tabs">
           {TAB_ORDER.map((t, i) => (
             <button
               key={t}
