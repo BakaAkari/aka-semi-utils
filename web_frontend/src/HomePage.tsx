@@ -123,7 +123,7 @@ export function HomePage() {
     }
 
     try {
-      const response = await processImage('/tools/watermark/api/preview', file, sanitizedConfig, abortController.signal);
+      const response = await processImage('preview', file, sanitizedConfig, abortController.signal);
       if (requestId !== previewRequestId.current || abortController.signal.aborted) return;
       setPreview(response.file);
       setStatus('success');
@@ -151,7 +151,7 @@ export function HomePage() {
     setMessage('正在处理原图...');
     setProgress(0);
     try {
-      const response = await processImage('/tools/watermark/api/process', file, sanitizedConfig);
+      const response = await processImage('process', file, sanitizedConfig);
       setResult(response.file);
       setStatus('success');
       setMessage('处理完成');
@@ -183,7 +183,7 @@ export function HomePage() {
     for (let i = 0; i < files.length; i++) {
       if (abortController.signal.aborted) break;
       try {
-        const response = await processImage('/tools/watermark/api/process', files[i], sanitizedConfig, abortController.signal);
+        const response = await processImage('process', files[i], sanitizedConfig, abortController.signal);
         results.push(response.file);
         setBatchResults(prev => [...prev, response.file]);
         setProgress(Math.round(((i + 1) / files.length) * 100));

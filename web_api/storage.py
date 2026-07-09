@@ -150,7 +150,7 @@ def new_output_path(input_path: Path, settings: WebApiSettings, *, prefix: str) 
     return settings.output_dir / f"{prefix}-{secrets.token_urlsafe(18)}{suffix}"
 
 
-def public_file_payload(path: Path, *, download_filename: str | None = None) -> dict[str, str]:
+def public_file_payload(path: Path, *, download_filename: str | None = None, api_prefix: str = "/tools/watermark/api") -> dict[str, str]:
     """Return file metadata safe for API clients.
 
     When *download_filename* is given it becomes the suggested filename for
@@ -160,12 +160,12 @@ def public_file_payload(path: Path, *, download_filename: str | None = None) -> 
 
     payload: dict[str, str] = {
         "filename": path.name,
-        "download_url": f"/tools/watermark/api/files/{path.name}",
+        "download_url": f"{api_prefix}/files/{path.name}",
     }
     if download_filename:
         payload["download_filename"] = download_filename
         payload["download_url"] = (
-            f"/tools/watermark/api/files/{path.name}"
+            f"{api_prefix}/files/{path.name}"
             f"?download_filename={download_filename}"
         )
     return payload

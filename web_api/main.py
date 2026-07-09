@@ -34,13 +34,15 @@ from web_api.storage import (
     save_upload,
 )
 
+_api = settings.api_prefix
+
 app = FastAPI(title="aka-semi-utils Web API", version="0.1.0")
 _job_slots = asyncio.Semaphore(max(1, settings.max_concurrent_jobs))
 
 # Serve fonts as static files
 _fonts_dir = Path(__file__).parent.parent / "config" / "fonts"
 if _fonts_dir.exists():
-    app.mount("/tools/watermark/api/fonts", StaticFiles(directory=str(_fonts_dir)), name="fonts")
+    app.mount(f"{_api}/fonts", StaticFiles(directory=str(_fonts_dir)), name="fonts")
 
 # Frontend static files are served by Caddy; API only serves fonts and endpoints here.
 
@@ -52,14 +54,14 @@ async def api_error_handler(_request: Request, exc: ApiError) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=exc.to_payload())
 
 
-@app.get("/tools/watermark/api/health")
+@app.get(f"{_api}/health")
 def health() -> dict[str, Any]:
     """Health check for local, Caddy, and systemd probes."""
 
     return success_response(status="ok")
 
 
-@app.post("/tools/watermark/api/_visit")
+@app.post(f"{_api}/_visit")
 async def visit_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
     """Record a visitor fingerprint."""
     visitor_id = payload.get("visitor_id", "")
@@ -69,7 +71,7 @@ async def visit_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
     return success_response(new=new)
 
 
-@app.get("/tools/watermark/api/_stats")
+@app.get(f"{_api}/_stats")
 def stats_endpoint(request: Request) -> dict[str, Any]:
     """Return full statistics (requires X-Dev-Password header)."""
     password = request.headers.get("X-Dev-Password", "")
@@ -78,13 +80,13 @@ def stats_endpoint(request: Request) -> dict[str, Any]:
     return stats.get_stats()
 
 
-@app.get("/tools/watermark/api/_stats/health")
+@app.get(f"{_api}/_stats/health")
 def stats_health() -> dict[str, Any]:
     """Check stats database connectivity."""
     return stats.health_check()
 
 
-@app.post("/tools/watermark/api/uploads")
+@app.post(f"{_api}/uploads")
 async def upload_image(file: UploadFile = File(...)) -> dict[str, Any]:
     """Upload an input image once and return an expiring opaque id."""
 
@@ -96,7 +98,7 @@ async def upload_image(file: UploadFile = File(...)) -> dict[str, Any]:
     )
 
 
-@app.post("/tools/watermark/api/upload-resource")
+@app.post(f"{_api}/upload-resource")
 async def upload_resource(
     file: UploadFile = File(...),
     kind: str = Form(default="logo"),  # "logo" or "signature"
@@ -111,7 +113,7 @@ async def upload_resource(
     )
 
 
-@app.post("/tools/watermark/api/process")
+@app.post(f"{_api}/process")
 async def process_endpoint(
     file: UploadFile | None = File(default=None),
     image_id: str = Form(default=""),
@@ -126,7 +128,7 @@ async def process_endpoint(
     )
 
 
-@app.post("/tools/watermark/api/preview")
+@app.post(f"{_api}/preview")
 async def preview_endpoint(
     file: UploadFile | None = File(default=None),
     image_id: str = Form(default=""),
@@ -141,7 +143,7 @@ async def preview_endpoint(
     )
 
 
-@app.get("/tools/watermark/api/files/{filename}")
+@app.get(f"{_api}/files/{{filename}}")
 def get_output_file(filename: str, download_filename: str = "") -> FileResponse:
     """Download a generated output or uploaded resource by server-side filename.
 
@@ -154,7 +156,7 @@ def get_output_file(filename: str, download_filename: str = "") -> FileResponse:
     return FileResponse(path, filename=download_filename or path.name)
 
 
-@app.post("/tools/watermark/api/batch-download")
+@app.post(f"{_api}/batch-download")
 async def batch_download_endpoint(payload: dict[str, Any], background_tasks: BackgroundTasks) -> FileResponse:
     """Download multiple processed images as a zip archive."""
 
@@ -264,7 +266,7 @@ async def _run_single_image(
     # keeping the actual output suffix (HEIC inputs become .jpg, etc.).
     orig_stem = Path(original_filename).stem if original_filename else "image"
     download_filename = f"{orig_stem}{result_path.suffix}"
-    return success_response(file=public_file_payload(result_path, download_filename=download_filename))
+    return success_response(file=public_file_payload(result_path, download_filename=download_filename, api_prefix=_api))
 
 
 def _parse_config_json(raw: str) -> dict[str, Any]:

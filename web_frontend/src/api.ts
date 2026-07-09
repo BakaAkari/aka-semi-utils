@@ -1,4 +1,5 @@
 import type { WatermarkConfig } from './watermarkConfig';
+import { API_BASE } from './env';
 
 export type ApiFile = { filename: string; download_url: string; download_filename?: string };
 export type ProcessResponse = { ok: true; file: ApiFile };
@@ -71,7 +72,7 @@ async function ensureUploaded(file: File, signal?: AbortSignal): Promise<{ image
   const request = (async () => {
     const form = new FormData();
     form.append('file', file);
-    const response = await fetch('/tools/watermark/api/uploads', { method: 'POST', body: form, signal });
+    const response = await fetch(`${API_BASE}/api/uploads`, { method: 'POST', body: form, signal });
     const payload = (await response.json()) as UploadResponse | ApiErrorResponse;
     if (!response.ok || !payload.ok) {
       throw new Error((payload as ApiErrorResponse).error?.message || `上传失败：${response.status}`);
@@ -90,7 +91,7 @@ async function ensureUploaded(file: File, signal?: AbortSignal): Promise<{ image
 }
 
 export async function processImage(
-  endpoint: '/tools/watermark/api/process' | '/tools/watermark/api/preview',
+  endpoint: 'process' | 'preview',
   file: File,
   config: WatermarkConfig,
   signal?: AbortSignal
@@ -101,7 +102,7 @@ export async function processImage(
   form.append('config', JSON.stringify(config));
   form.append('original_filename', original_filename);
 
-  const response = await fetch(endpoint, { method: 'POST', body: form, signal });
+  const response = await fetch(`${API_BASE}/api/${endpoint}`, { method: 'POST', body: form, signal });
   const payload = (await response.json()) as ProcessResponse | ApiErrorResponse;
   if (!response.ok || !payload.ok) {
     throw new Error((payload as ApiErrorResponse).error?.message || `请求失败：${response.status}`);
@@ -113,7 +114,7 @@ export async function uploadResource(file: File, kind: 'logo' | 'signature'): Pr
   const form = new FormData();
   form.append('file', file);
   form.append('kind', kind);
-  const response = await fetch('/tools/watermark/api/upload-resource', { method: 'POST', body: form });
+  const response = await fetch(`${API_BASE}/api/upload-resource`, { method: 'POST', body: form });
   const payload = (await response.json()) as ResourceUploadResponse | ApiErrorResponse;
   if (!response.ok || !payload.ok) {
     throw new Error((payload as ApiErrorResponse).error?.message || `上传失败：${response.status}`);
@@ -126,7 +127,7 @@ export function toDownloadUrl(file: ApiFile): string {
 }
 
 export async function postVisit(visitorId: string): Promise<VisitResponse> {
-  const response = await fetch('/tools/watermark/api/_visit', {
+  const response = await fetch(`${API_BASE}/api/_visit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ visitor_id: visitorId }),
@@ -139,7 +140,7 @@ export async function postVisit(visitorId: string): Promise<VisitResponse> {
 }
 
 export async function getStats(password: string): Promise<StatsResponse> {
-  const response = await fetch('/tools/watermark/api/_stats', {
+  const response = await fetch(`${API_BASE}/api/_stats`, {
     headers: { 'X-Dev-Password': password },
   });
   const payload = (await response.json()) as StatsResponse | ApiErrorResponse;
