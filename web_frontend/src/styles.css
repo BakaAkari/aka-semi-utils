@@ -867,18 +867,24 @@ hr, .divider {
 
 .chip-item {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  align-items: stretch;
+  gap: 0;
 }
 
 .chip-item select {
   flex: 1;
   min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
 }
 
 .chip-item input[type="text"] {
   flex: 1;
   min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
 }
 
 .chip-remove {
@@ -886,21 +892,22 @@ hr, .divider {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 28px;
   padding: 0;
   font-size: 13px;
   line-height: 1;
   color: var(--text-faint);
-  background: transparent;
+  background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-left: none;
+  border-top-right-radius: var(--radius-xs);
+  border-bottom-right-radius: var(--radius-xs);
   cursor: pointer;
+  transition: color 0.15s;
 }
 
 .chip-remove:hover {
-  color: #e05555;
-  border-color: #e05555;
+  color: #d4756b;
 }
 
 /* 表单 */
