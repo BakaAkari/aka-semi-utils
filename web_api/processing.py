@@ -68,6 +68,10 @@ def process_image(
     except ApiError:
         raise
     except Exception as exc:
+        import logging
+        import traceback
+        _logger = logging.getLogger("web_api.processing")
+        _logger.error("Image processing failed:\n%s", traceback.format_exc())
         output_path.unlink(missing_ok=True)
         raise ApiError(
             code="processing_failed",

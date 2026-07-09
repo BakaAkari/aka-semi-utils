@@ -403,8 +403,8 @@ class WatermarkFilter(FilterProcessor):
                 continue
             try:
                 logos[key] = load_logo(path)
-            except FileNotFoundError:
-                logger.warning(f"Logo 文件不存在: {path}")
+            except (FileNotFoundError, OSError):
+                logger.warning("Logo 文件无法加载: %s", path)
         return logos
 
     def _paste_main_and_left(

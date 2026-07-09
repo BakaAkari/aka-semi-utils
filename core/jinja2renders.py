@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from jinja2 import pass_context
 
 from core.config_loader import LOGOS_DIR as logos_dir
@@ -29,15 +31,21 @@ def auto_logo(context, brand: str | None = None):
         stem_lower = stem.lower()
         return any(token in stem_lower for token in tokens)
 
+    def _is_valid_logo(f: Path) -> bool:
+        """Skip hidden files, AppleDouble artefacts, and non-image extensions."""
+        if f.name.startswith(".") or f.name.startswith("._"):
+            return False
+        return f.suffix.lower() in {'.png', '.jpg', '.jpeg'}
+
     # 1. 优先匹配用户自定义 Logo
     custom_dir = logos_dir / "custom"
     if custom_dir.exists():
         for f in custom_dir.iterdir():
-            if f.suffix.lower() in {'.png', '.jpg', '.jpeg'} and _matches_stem(f.stem):
+            if _is_valid_logo(f) and _matches_stem(f.stem):
                 return str(f.absolute()).replace('\\', '/')
 
     # 2. 回退到内置默认 Logo
     for f in logos_dir.iterdir():
-        if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg'} and _matches_stem(f.stem):
+        if f.is_file() and _is_valid_logo(f) and _matches_stem(f.stem):
             return str(f.absolute()).replace('\\', '/')
     return None
