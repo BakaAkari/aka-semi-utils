@@ -119,8 +119,14 @@ class CornersPayload(StrictModel):
     right_bottom: CornerPayload = Field(default_factory=CornerPayload)
 
 
+class SidesPayload(StrictModel):
+    left: CornerPayload = Field(default_factory=CornerPayload)
+    right: CornerPayload = Field(default_factory=CornerPayload)
+
+
 class WatermarkPayload(StrictModel):
     corners: CornersPayload = Field(default_factory=CornersPayload)
+    sides: SidesPayload = Field(default_factory=SidesPayload)
     logo: LogoPayload = Field(default_factory=LogoPayload)
     signature: SignaturePayload = Field(default_factory=SignaturePayload)
     advanced: AdvancedPayload = Field(default_factory=AdvancedPayload)
@@ -153,11 +159,14 @@ def config_from_payload(payload: dict[str, Any] | None) -> WatermarkConfig:
         ) from exc
 
     corners = parsed.corners
+    sides = parsed.sides
     return WatermarkConfig(
         left_top=_corner(corners.left_top),
         left_bottom=_corner(corners.left_bottom),
         right_top=_corner(corners.right_top),
         right_bottom=_corner(corners.right_bottom),
+        left_side=_corner(sides.left),
+        right_side=_corner(sides.right),
         logo=LogoConfig(**parsed.logo.model_dump()),
         signature=SignatureConfig(**parsed.signature.model_dump()),
         advanced=AdvancedConfig(**parsed.advanced.model_dump()),

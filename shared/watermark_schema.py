@@ -123,6 +123,8 @@ class WatermarkConfig:
     left_bottom: CornerConfig = field(default_factory=CornerConfig)
     right_top: CornerConfig = field(default_factory=CornerConfig)
     right_bottom: CornerConfig = field(default_factory=CornerConfig)
+    left_side: CornerConfig = field(default_factory=CornerConfig)
+    right_side: CornerConfig = field(default_factory=CornerConfig)
     logo: LogoConfig = field(default_factory=LogoConfig)
     custom_text: str = ""
     signature: SignatureConfig = field(default_factory=SignatureConfig)

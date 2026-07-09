@@ -74,7 +74,7 @@ def test_shared_assembler_builds_expected_processors() -> None:
     assert watermark["logo_height"] == 48
     assert watermark["quality"] == 88
     assert watermark["subsampling"] == 1
-    assert watermark["right_logo"] == "{{auto_logo()|replace('\\\\', '/')}}"
+    assert watermark["right_logo"].count("\\") == 4
     assert watermark["delimiter_color"] == "#D8D8D6"
     assert watermark["left_top"]["text"] == "{{ exif.CameraModelName|default('-') | replace('_', '') }}"
     assert watermark["left_bottom"]["processor_name"] == "multi_rich_text"

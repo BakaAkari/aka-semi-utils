@@ -180,9 +180,17 @@ def _chip_to_text(chip: FieldChip, config: WatermarkConfig) -> str:
 
 
 def _build_watermark_config(config: WatermarkConfig) -> dict[str, Any]:
-    """Build the WatermarkFilter configuration node."""
+    """Build the WatermarkFilter configuration node, dispatching by layout_mode."""
 
-    node: dict[str, Any] = {}
+    if config.layout_mode == "sides":
+        return _build_sides_config(config)
+    return _build_corners_config(config)
+
+
+def _build_corners_config(config: WatermarkConfig) -> dict[str, Any]:
+    """Build WatermarkFilter config for corners (四角) layout."""
+
+    node: dict[str, Any] = {"layout_mode": "corners"}
 
     for corner, attr in [
         ("left_top", "left_top"),
@@ -250,7 +258,74 @@ def _build_watermark_config(config: WatermarkConfig) -> dict[str, Any]:
         if logo.enabled == "custom" and logo.custom_path:
             logo_path = logo.custom_path
         else:
-            logo_path = "{{auto_logo()|replace('\\\\', '/')}}"
+            logo_path = "{{auto_logo()|replace('\\\\\\\\', '/')}}"
+
+        if logo.position == "right":
+            node["right_logo"] = logo_path
+        elif logo.position == "center":
+            node["center_logo"] = logo_path
+        elif logo.position == "left":
+            node["left_logo"] = logo_path
+
+        node["delimiter_color"] = logo.color
+
+    if config.custom_text:
+        node["custom_text"] = LiteralText(config.custom_text)
+
+    if config.advanced.footer_height_px > 0:
+        node["bottom_margin"] = config.advanced.footer_height_px
+    if config.advanced.logo_height_px > 0:
+        node["logo_height"] = config.advanced.logo_height_px
+
+    node["quality"] = config.advanced.quality
+    node["subsampling"] = config.advanced.subsampling
+
+    return node
+
+
+def _build_sides_config(config: WatermarkConfig) -> dict[str, Any]:
+    """Build WatermarkFilter config for sides (左右居中) layout.
+
+    Each side produces a list of individual text-line configs that the
+    WatermarkFilter composites into a vertically-stacked block placed
+    against the left / right edge of the image.
+    """
+
+    node: dict[str, Any] = {"layout_mode": "sides"}
+
+    for side_key, attr in [("left_side", "left_side"), ("right_side", "right_side")]:
+        side_cfg: CornerConfig = getattr(config, attr)
+        chips = _chips_for_corner(side_cfg)
+        if not chips:
+            continue
+
+        lines: list[dict[str, Any]] = []
+        for chip in chips:
+            text = _chip_to_text(chip, config)
+            if not text:
+                continue
+            font, color = _resolve_chip_style(chip, side_cfg, config.advanced)
+            lines.append({
+                "text": text,
+                "color": color,
+                "font_path": font,
+            })
+
+        if lines:
+            height_ratio = side_cfg.font_size_ratio or config.advanced.corner_text_ratio
+            node[side_key] = {
+                "lines": lines,
+                "height_ratio": height_ratio,
+                "global_font": config.advanced.global_font,
+                "global_color": config.advanced.global_color,
+            }
+
+    logo = config.logo
+    if logo.enabled != "disabled":
+        if logo.enabled == "custom" and logo.custom_path:
+            logo_path = logo.custom_path
+        else:
+            logo_path = "{{auto_logo()|replace('\\\\\\\\', '/')}}"
 
         if logo.position == "right":
             node["right_logo"] = logo_path
