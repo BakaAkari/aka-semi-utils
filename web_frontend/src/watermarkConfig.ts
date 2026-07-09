@@ -75,6 +75,11 @@ export type AdvancedConfig = {
   ratio: string;
   concat_direction: 'horizontal' | 'vertical';
   alignment_mode: 'top' | 'center' | 'bottom';
+  // Frame mode (白边相框)
+  frame_border_width?: number;
+  frame_bar_bg?: string;
+  frame_text_primary?: string;
+  frame_text_secondary?: string;
 };
 
 export type WatermarkConfig = {
@@ -83,9 +88,10 @@ export type WatermarkConfig = {
   logo: LogoConfig;
   signature: SignatureConfig;
   advanced: AdvancedConfig;
+  custom_text?: string;
   // Footer bar position and layout mode
   footer_position?: 'bottom' | 'top' | 'left' | 'right';
-  layout_mode?: 'corners' | 'sides';
+  layout_mode?: 'corners' | 'sides' | 'framed';
 };
 
 export type FieldOption = {
@@ -208,7 +214,12 @@ export function createDefaultWatermarkConfig(): WatermarkConfig {
       ratio_enabled: false,
       ratio: '3:4',
       concat_direction: 'vertical',
-      alignment_mode: 'center'
+      alignment_mode: 'center',
+      // Frame mode (白边相框) — default color scheme: 经典白
+      frame_border_width: 40,
+      frame_bar_bg: '#FFFFFF',
+      frame_text_primary: '#333333',
+      frame_text_secondary: '#888888',
     }
   };
 }

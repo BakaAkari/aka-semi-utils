@@ -105,6 +105,8 @@ def config_to_processors(config: WatermarkConfig) -> list[dict[str, Any]]:
 
             if key == "margin" and all(params.get(f"{d}_margin", 0) == 0 for d in ["left", "right", "top", "bottom"]):
                 continue
+            if key == "margin" and config.layout_mode == "framed":
+                continue  # WatermarkFilter handles margins for framed mode
             if key == "rounded_corner" and params.get("border_radius", 0) == 0:
                 continue
             if key == "shadow" and params.get("shadow_radius", 0) == 0:
@@ -183,6 +185,10 @@ def _build_watermark_config(config: WatermarkConfig) -> dict[str, Any]:
     """Build the WatermarkFilter configuration node."""
 
     node: dict[str, Any] = {}
+
+    # --- Framed mode (白边相框) ---
+    if config.layout_mode == "framed":
+        return _build_framed_config(config)
 
     for corner, attr in [
         ("left_top", "left_top"),
@@ -271,6 +277,99 @@ def _build_watermark_config(config: WatermarkConfig) -> dict[str, Any]:
 
     node["quality"] = config.advanced.quality
     node["subsampling"] = config.advanced.subsampling
+
+    return node
+
+
+def _build_framed_config(config: WatermarkConfig) -> dict[str, Any]:
+    """Build WatermarkFilter config for framed (白边相框) layout.
+
+    Structure:
+      - All 4 margins equal to frame_border_width (white border)
+      - Bottom margin extended by a fixed bar height for the info bar
+      - Left side chips → model name, lens name (stacked)
+      - Right side chips → rendered as a line, logo next to it
+      - Margin color = frame_bar_bg (info bar background)
+    """
+    adv = config.advanced
+    bw = max(0, adv.frame_border_width)
+    bar_h = 80  # fixed info bar height in pixels
+
+    node: dict[str, Any] = {
+        "layout_mode": "framed",
+        "left_margin": bw,
+        "right_margin": bw,
+        "top_margin": bw,
+        "bottom_margin": bw + bar_h,
+        "color": adv.frame_bar_bg,
+        "frame_text_primary": adv.frame_text_primary,
+        "frame_text_secondary": adv.frame_text_secondary,
+    }
+
+    # --- Left side: model name (primary) + lens name (secondary) ---
+    left = config.left_side
+    left_chips = _chips_for_corner(left)
+    primary_chips: list[str] = []
+    secondary_chips: list[str] = []
+    for chip in left_chips:
+        text = _chip_to_text(chip, config)
+        if not text:
+            continue
+        field_id = chip.field_id
+        if field_id in ("camera_model", "make"):
+            primary_chips.append(text)
+        else:
+            secondary_chips.append(text)
+
+    if primary_chips:
+        sep = left.separator.strip()
+        if sep:
+            node["frame_left_primary"] = f" {sep} ".join(primary_chips)
+        else:
+            node["frame_left_primary"] = "  ".join(primary_chips)
+
+    if secondary_chips:
+        sep = left.separator.strip()
+        if sep:
+            node["frame_left_secondary"] = f" {sep} ".join(secondary_chips)
+        else:
+            node["frame_left_secondary"] = "  ".join(secondary_chips)
+
+    # --- Right side: params line ---
+    right = config.right_side
+    right_chips = _chips_for_corner(right)
+    right_texts: list[str] = []
+    for chip in right_chips:
+        text = _chip_to_text(chip, config)
+        if not text:
+            continue
+        right_texts.append(text)
+
+    if right_texts:
+        sep = right.separator.strip()
+        if sep:
+            node["frame_params"] = f" {sep} ".join(right_texts)
+        else:
+            node["frame_params"] = "  ".join(right_texts)
+
+    # --- Font sizing ---
+    if left.font_size_ratio > 0:
+        node["frame_primary_ratio"] = left.font_size_ratio
+    if right.font_size_ratio > 0:
+        node["frame_params_ratio"] = right.font_size_ratio
+
+    # --- Brand logo ---
+    logo = config.logo
+    if logo.enabled != "disabled":
+        if logo.enabled == "custom" and logo.custom_path:
+            logo_path = logo.custom_path
+        else:
+            logo_path = "{{auto_logo()|replace('\\\\\\\\', '/')}}"
+        node["frame_logo"] = logo_path
+
+    # --- Quality ---
+    node["quality"] = adv.quality
+    node["subsampling"] = adv.subsampling
 
     return node
 
