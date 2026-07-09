@@ -4,7 +4,7 @@
 @font-face {
   font-family: "AkaSemiNoto";
   src: url("/tools/watermark/api/fonts/NotoSansCJKsc-Regular.otf") format("opentype");
-  font-weight: 400;
+  font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
@@ -67,8 +67,8 @@ body {
   margin: 0;
   overflow: hidden;
   background: var(--bg);
-  font-family: "Inter", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
-  font-size: 15px;
+  font-family: "Microsoft YaHei", "微软雅黑", "PingFang SC", sans-serif;
+  font-size: 17px;
   line-height: 1.5;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -100,8 +100,8 @@ button, .btn {
   gap: 6px;
   padding: 6px 14px;
   border-radius: var(--radius-xs);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 700;
   letter-spacing: -0.01em;
   cursor: pointer;
   white-space: nowrap;
@@ -156,12 +156,12 @@ button.ghost:hover, .btn.ghost:hover {
 
 button.small, .btn.small {
   padding: 3px 10px;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 button.micro, .btn.micro {
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 button.danger, .btn.danger {
@@ -193,7 +193,7 @@ input, select, textarea {
   width: 100%;
   padding: 7px 10px;
   border-radius: var(--radius-xs);
-  font-size: 14px;
+  font-size: 16px;
   background: var(--bg);
   border: 1px solid var(--line);
   color: var(--text);
@@ -240,14 +240,14 @@ label {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--text-dim);
   cursor: default;
 }
 
 label.inline { flex-direction: row; align-items: center; gap: 8px; cursor: pointer; }
-label .label-note { font-size: 12px; color: var(--text-faint); font-weight: 400; }
+label .label-note { font-size: 14px; color: var(--text-faint); font-weight: 700; }
 
 /* ========== 卡片 / 面板 ========== */
 .card, .panel {
@@ -284,15 +284,15 @@ hr, .divider {
 .text-success { color: var(--success); }
 .text-error { color: var(--red); }
 
-.text-xs { font-size: 12px; line-height: 1.4; }
-.text-sm { font-size: 13px; line-height: 1.45; }
-.text-base { font-size: 14px; line-height: 1.5; }
-.text-md { font-size: 16px; line-height: 1.5; }
-.text-lg { font-size: 18px; line-height: 1.4; }
-.text-xl { font-size: 22px; line-height: 1.3; }
+.text-xs { font-size: 14px; line-height: 1.4; }
+.text-sm { font-size: 15px; line-height: 1.45; }
+.text-base { font-size: 16px; line-height: 1.5; }
+.text-md { font-size: 18px; line-height: 1.5; }
+.text-lg { font-size: 20px; line-height: 1.4; }
+.text-xl { font-size: 24px; line-height: 1.3; }
 
-.font-normal { font-weight: 400; }
-.font-medium { font-weight: 500; }
+.font-normal { font-weight: 700; }
+.font-medium { font-weight: 700; }
 .font-semibold { font-weight: 600; }
 .font-bold { font-weight: 700; }
 
@@ -379,8 +379,8 @@ hr, .divider {
 }
 
 .topbar-nav {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -414,17 +414,17 @@ hr, .divider {
 }
 
 .topbar-brand-title {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 14px;
+  font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--text);
   line-height: 1.3;
 }
 
 .topbar-brand-sub {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 10px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 12px;
   color: var(--text-faint);
   letter-spacing: 0.04em;
   line-height: 1.2;
@@ -444,8 +444,8 @@ hr, .divider {
   border-radius: var(--radius-xs);
   background: var(--bg);
   border: 1px solid var(--line);
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
   color: var(--text-dim);
   max-width: 360px;
   overflow: hidden;
@@ -491,9 +491,9 @@ hr, .divider {
 }
 
 .rail-panel-title {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 11px;
-  font-weight: 500;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.10em;
@@ -537,20 +537,20 @@ hr, .divider {
 .upload-zone input { display: none; }
 
 .upload-zone-icon {
-  font-size: 24px;
+  font-size: 26px;
   color: var(--text-faint);
 }
 
 .upload-zone-text {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 12px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 14px;
   color: var(--text-dim);
   letter-spacing: 0.06em;
 }
 
 .upload-zone-hint {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 10px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 12px;
   color: var(--text-faint);
   letter-spacing: 0.04em;
 }
@@ -598,7 +598,7 @@ hr, .divider {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   border: none;
   padding: 0;
@@ -632,14 +632,14 @@ hr, .divider {
 .preset-card:active { transform: scale(0.98); }
 
 .preset-card-name {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 11px;
-  font-weight: 500;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text);
 }
 
 .preset-card-desc {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-faint);
   line-height: 1.3;
   overflow: hidden;
@@ -698,14 +698,14 @@ hr, .divider {
 .preview-empty-icon { font-size: 36px; opacity: 0.2; }
 
 .preview-empty-title {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text-dim);
 }
 
 .preview-empty-sub {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
   color: var(--text-faint);
   max-width: 260px;
   letter-spacing: 0.04em;
@@ -723,7 +723,7 @@ hr, .divider {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-dim);
 }
 
@@ -755,9 +755,9 @@ hr, .divider {
 .inspector-tab {
   padding: 8px 14px;
   border-radius: 0;
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 11px;
-  font-weight: 500;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-faint);
   cursor: pointer;
   border: none;
@@ -818,9 +818,9 @@ hr, .divider {
   flex: 1;
   padding: 5px 0;
   border-radius: var(--radius-xs);
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 11px;
-  font-weight: 500;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-faint);
   cursor: pointer;
   border: 1px solid transparent;
@@ -849,9 +849,9 @@ hr, .divider {
 }
 
 .editor-card-title h3 {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--text-dim);
   margin: 0;
   letter-spacing: 0.06em;
@@ -894,7 +894,7 @@ hr, .divider {
   justify-content: center;
   width: 28px;
   padding: 0;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
   color: var(--text-faint);
   background: var(--bg);
@@ -933,8 +933,8 @@ hr, .divider {
 }
 
 .slider-input .slider-value {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
   color: var(--text-dim);
   min-width: 32px;
   text-align: right;
@@ -992,8 +992,8 @@ hr, .divider {
   gap: 8px;
   padding: 8px 14px;
   border-radius: var(--radius-xs);
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 13px;
   color: var(--text);
   background: var(--card-bg);
   border: 1px solid var(--line);
