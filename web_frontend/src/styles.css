@@ -858,6 +858,51 @@ hr, .divider {
   text-transform: uppercase;
 }
 
+/* Chip list — field dropdown + inline remove button */
+.chip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chip-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip-item select {
+  flex: 1;
+  min-width: 0;
+}
+
+.chip-item input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.chip-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.chip-remove:hover {
+  color: #e05555;
+  border-color: #e05555;
+}
+
 /* 表单 */
 .form-row {
   display: flex;
