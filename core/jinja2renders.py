@@ -20,15 +20,24 @@ def auto_logo(context, brand: str | None = None):
     exif = context.get('exif', {})
     brand = (brand or exif.get('Make', 'default')).lower()
 
+    # Split the brand name into tokens (e.g. "NIKON CORPORATION" → ["nikon", "corporation"])
+    # and filter to tokens long enough to be meaningful brand identifiers.
+    tokens = [t for t in brand.replace("-", " ").split() if len(t) > 2]
+
+    def _matches_stem(stem: str) -> bool:
+        """Return True when *any* brand token appears inside the logo filename stem."""
+        stem_lower = stem.lower()
+        return any(token in stem_lower for token in tokens)
+
     # 1. 优先匹配用户自定义 Logo
     custom_dir = logos_dir / "custom"
     if custom_dir.exists():
         for f in custom_dir.iterdir():
-            if f.suffix.lower() in {'.png', '.jpg', '.jpeg'} and f.stem.lower() in brand:
+            if f.suffix.lower() in {'.png', '.jpg', '.jpeg'} and _matches_stem(f.stem):
                 return str(f.absolute()).replace('\\', '/')
 
     # 2. 回退到内置默认 Logo
     for f in logos_dir.iterdir():
-        if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg'} and f.stem.lower() in brand:
+        if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg'} and _matches_stem(f.stem):
             return str(f.absolute()).replace('\\', '/')
     return None
