@@ -62,7 +62,7 @@ export function PreviewStage() {
           <a
             className="btn link"
             href={preview.download_url}
-            download={preview.filename}
+            download={preview.download_filename || preview.filename}
           >
             下载预览 ↓
           </a>

@@ -184,7 +184,7 @@ export function LeftRail() {
           <div className="rail-panel-header">
             <span className="rail-panel-title">缩略图</span>
           </div>
-          <div className="rail-panel-body">
+          <div className="rail-panel-body scroll">
             <div className="thumb-grid">
               {files.map((file, i) => (
                 <div

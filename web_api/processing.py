@@ -133,8 +133,7 @@ def _load_preview_image(path: Path, settings: WebApiSettings) -> Image.Image:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DecompressionBombWarning)
             with Image.open(path) as source:
-                source.load()
-                image = source.copy()
+                image = ImageOps.exif_transpose(source)
     except Exception as exc:
         raise ApiError(
             code="invalid_image",
@@ -142,6 +141,5 @@ def _load_preview_image(path: Path, settings: WebApiSettings) -> Image.Image:
             status_code=400,
         ) from exc
 
-    image = ImageOps.exif_transpose(image)
     image.thumbnail((settings.preview_max_edge, settings.preview_max_edge))
     return image

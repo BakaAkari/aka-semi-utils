@@ -150,13 +150,25 @@ def new_output_path(input_path: Path, settings: WebApiSettings, *, prefix: str) 
     return settings.output_dir / f"{prefix}-{secrets.token_urlsafe(18)}{suffix}"
 
 
-def public_file_payload(path: Path) -> dict[str, str]:
-    """Return file metadata safe for API clients."""
+def public_file_payload(path: Path, *, download_filename: str | None = None) -> dict[str, str]:
+    """Return file metadata safe for API clients.
 
-    return {
+    When *download_filename* is given it becomes the suggested filename for
+    browser downloads and is appended as a query parameter so the download
+    endpoint can set the matching Content-Disposition header.
+    """
+
+    payload: dict[str, str] = {
         "filename": path.name,
         "download_url": f"/tools/watermark/api/files/{path.name}",
     }
+    if download_filename:
+        payload["download_filename"] = download_filename
+        payload["download_url"] = (
+            f"/tools/watermark/api/files/{path.name}"
+            f"?download_filename={download_filename}"
+        )
+    return payload
 
 
 def resolve_public_output(filename: str, settings: WebApiSettings) -> Path:

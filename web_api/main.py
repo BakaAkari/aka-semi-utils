@@ -142,11 +142,16 @@ async def preview_endpoint(
 
 
 @app.get("/tools/watermark/api/files/{filename}")
-def get_output_file(filename: str) -> FileResponse:
-    """Download a generated output or uploaded resource by server-side filename."""
+def get_output_file(filename: str, download_filename: str = "") -> FileResponse:
+    """Download a generated output or uploaded resource by server-side filename.
+
+    When *download_filename* is provided via query parameter it is used as the
+    Content-Disposition filename so browsers save the file under its original
+    name rather than the opaque server-side name.
+    """
 
     path = resolve_public_output(filename, settings)
-    return FileResponse(path, filename=path.name)
+    return FileResponse(path, filename=download_filename or path.name)
 
 
 @app.post("/tools/watermark/api/batch-download")
@@ -227,7 +232,7 @@ async def _run_single_image(
         input_path, settings, prefix="preview" if preview else "process",
     )
     try:
-        await asyncio.wait_for(_job_slots.acquire(), timeout=0.01)
+        await asyncio.wait_for(_job_slots.acquire(), timeout=30.0)
     except TimeoutError as exc:
         raise ApiError(
             code="server_busy",
@@ -255,7 +260,11 @@ async def _run_single_image(
         visitor_id="",
         preset_name="",
     )
-    return success_response(file=public_file_payload(result_path))
+    # Derive the download filename from the original upload name while
+    # keeping the actual output suffix (HEIC inputs become .jpg, etc.).
+    orig_stem = Path(original_filename).stem if original_filename else "image"
+    download_filename = f"{orig_stem}{result_path.suffix}"
+    return success_response(file=public_file_payload(result_path, download_filename=download_filename))
 
 
 def _parse_config_json(raw: str) -> dict[str, Any]:

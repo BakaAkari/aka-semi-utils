@@ -15,7 +15,7 @@ export const watermarkPresets: WatermarkPreset[] = [
   {
     id: 'default',
     name: '默认排版',
-    description: '左上厂商品牌 + 相机型号，左下焦距   光圈   快门   ISO，右侧自动 Logo。经典简洁的摄影水印风格。',
+    description: '左上品牌+型号，左下参数，右侧自动 Logo',
     config: {
       ...base(),
       corners: {
@@ -31,7 +31,7 @@ export const watermarkPresets: WatermarkPreset[] = [
   {
     id: 'minimal-params',
     name: '极简参数',
-    description: '只在右下显示核心拍摄参数，低调不抢画面。',
+    description: '右下显示核心拍摄参数，低调不抢画面',
     config: {
       ...base(),
       corners: {
@@ -47,7 +47,7 @@ export const watermarkPresets: WatermarkPreset[] = [
   {
     id: 'soft-card',
     name: '圆角阴影卡片',
-    description: '加入圆角、阴影和更高底栏，适合社交媒体成片。',
+    description: '圆角+阴影+高底栏，适合社交媒体成片',
     config: {
       ...base(),
       corners: {
