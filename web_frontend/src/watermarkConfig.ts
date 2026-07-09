@@ -1,4 +1,5 @@
 export type CornerKey = 'left_top' | 'left_bottom' | 'right_top' | 'right_bottom';
+export type SideKey = 'left' | 'right';
 
 export type FieldId =
   | 'camera_model'
@@ -78,6 +79,7 @@ export type AdvancedConfig = {
 
 export type WatermarkConfig = {
   corners: Record<CornerKey, CornerConfig>;
+  sides: Record<SideKey, CornerConfig>;
   logo: LogoConfig;
   signature: SignatureConfig;
   advanced: AdvancedConfig;
@@ -97,6 +99,11 @@ export const cornerLabels: Record<CornerKey, string> = {
   left_bottom: '左下',
   right_top: '右上',
   right_bottom: '右下'
+};
+
+export const sideLabels: Record<SideKey, string> = {
+  left: '左侧',
+  right: '右侧'
 };
 
 export const anchorLabels: Record<SignatureConfig['anchor'], string> = {
@@ -144,6 +151,18 @@ export function createDefaultWatermarkConfig(): WatermarkConfig {
         font_size_ratio: 0.035
       },
       right_bottom: {
+        chips: [],
+        separator: '    ',
+        font_size_ratio: 0.035
+      }
+    },
+    sides: {
+      left: {
+        chips: [{ field_id: 'make' }, { field_id: 'camera_model' }, { field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'shutter' }, { field_id: 'iso' }],
+        separator: '    ',
+        font_size_ratio: 0.04
+      },
+      right: {
         chips: [],
         separator: '    ',
         font_size_ratio: 0.035
@@ -198,6 +217,9 @@ export function sanitizeConfig(config: WatermarkConfig): WatermarkConfig {
   const next = structuredClone(config);
   for (const corner of Object.values(next.corners)) {
     corner.chips = corner.chips.filter((chip) => chip.field_id !== 'empty');
+  }
+  for (const side of Object.values(next.sides)) {
+    side.chips = side.chips.filter((chip) => chip.field_id !== 'empty');
   }
   return next;
 }

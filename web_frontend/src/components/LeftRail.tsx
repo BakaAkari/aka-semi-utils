@@ -109,6 +109,10 @@ export function LeftRail() {
         right_top: { chips: [], separator: '    ', font_size_ratio: 0.035 },
         right_bottom: { chips: [], separator: '    ', font_size_ratio: 0.035 },
       },
+      sides: {
+        left: { chips: [], separator: '    ', font_size_ratio: 0.035 },
+        right: { chips: [], separator: '    ', font_size_ratio: 0.035 },
+      },
       logo: { enabled: 'disabled', position: 'right', color: '#D8D8D6', custom_path: '', free_position: false },
       signature: {
         enabled: false, path: '', invert_mono: false,

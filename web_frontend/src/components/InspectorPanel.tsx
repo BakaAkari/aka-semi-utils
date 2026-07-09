@@ -4,9 +4,11 @@ import { uploadResource } from '../api';
 import {
   anchorLabels,
   cornerLabels,
+  sideLabels,
   fieldOptions,
   type CornerConfig,
   type CornerKey,
+  type SideKey,
   type FieldChip,
   type FieldId,
   type WatermarkConfig,
@@ -182,6 +184,49 @@ function CornersTab({
   removeChip: (k: CornerKey, i: number) => void;
 }) {
   const cornerKeys: CornerKey[] = ['left_top', 'left_bottom', 'right_top', 'right_bottom'];
+  const sideKeys: SideKey[] = ['left', 'right'];
+  const isSides = (config.layout_mode ?? 'corners') === 'sides';
+
+  const updateSide = useCallback(
+    (sideKey: SideKey, patch: Partial<CornerConfig>) => {
+      setConfig((prev) => ({
+        ...prev,
+        sides: { ...prev.sides, [sideKey]: { ...prev.sides[sideKey], ...patch } },
+      }));
+    },
+    [setConfig],
+  );
+
+  const updateSideChip = useCallback(
+    (sideKey: SideKey, index: number, patch: Partial<FieldChip>) => {
+      setConfig((prev) => {
+        const chips = [...prev.sides[sideKey].chips];
+        chips[index] = { ...chips[index], ...patch };
+        return { ...prev, sides: { ...prev.sides, [sideKey]: { ...prev.sides[sideKey], chips } } };
+      });
+    },
+    [setConfig],
+  );
+
+  const addSideChip = useCallback(
+    (sideKey: SideKey) => {
+      setConfig((prev) => {
+        const chips = [...prev.sides[sideKey].chips, { field_id: 'camera_model' as FieldId }];
+        return { ...prev, sides: { ...prev.sides, [sideKey]: { ...prev.sides[sideKey], chips } } };
+      });
+    },
+    [setConfig],
+  );
+
+  const removeSideChip = useCallback(
+    (sideKey: SideKey, index: number) => {
+      setConfig((prev) => {
+        const chips = prev.sides[sideKey].chips.filter((_, i) => i !== index);
+        return { ...prev, sides: { ...prev.sides, [sideKey]: { ...prev.sides[sideKey], chips } } };
+      });
+    },
+    [setConfig],
+  );
 
   return (
     <div className="anim-fade-in corners-all">
@@ -217,18 +262,36 @@ function CornersTab({
         </div>
       </div>
 
-      {/* --- Corner blocks --- */}
-      {cornerKeys.map((key) => {
+      {/* --- Corner blocks (四角模式) --- */}
+      {!isSides && cornerKeys.map((key) => {
         const corner = config.corners[key];
         return (
           <CornerBlock
             key={key}
-            cornerKey={key}
+            label={cornerLabels[key]}
             corner={corner}
-            updateCorner={updateCorner}
-            updateChip={updateChip}
-            addChip={addChip}
-            removeChip={removeChip}
+            cornerKey={key}
+            updateCorner={(k, p) => updateCorner(k as CornerKey, p)}
+            updateChip={(k, i, p) => updateChip(k as CornerKey, i, p)}
+            addChip={(k) => addChip(k as CornerKey)}
+            removeChip={(k, i) => removeChip(k as CornerKey, i)}
+          />
+        );
+      })}
+
+      {/* --- Side blocks (左右居中模式) --- */}
+      {isSides && sideKeys.map((key) => {
+        const side = config.sides[key];
+        return (
+          <CornerBlock
+            key={key}
+            label={sideLabels[key]}
+            corner={side}
+            cornerKey={key}
+            updateCorner={(k, p) => updateSide(k as SideKey, p)}
+            updateChip={(k, i, p) => updateSideChip(k as SideKey, i, p)}
+            addChip={(k) => addSideChip(k as SideKey)}
+            removeChip={(k, i) => removeSideChip(k as SideKey, i)}
           />
         );
       })}
@@ -237,6 +300,7 @@ function CornersTab({
 }
 
 function CornerBlock({
+  label,
   cornerKey,
   corner,
   updateCorner,
@@ -244,17 +308,18 @@ function CornerBlock({
   addChip,
   removeChip,
 }: {
-  cornerKey: CornerKey;
+  label: string;
+  cornerKey: string;
   corner: CornerConfig;
-  updateCorner: (k: CornerKey, p: Partial<CornerConfig>) => void;
-  updateChip: (k: CornerKey, i: number, p: Partial<FieldChip>) => void;
-  addChip: (k: CornerKey) => void;
-  removeChip: (k: CornerKey, i: number) => void;
+  updateCorner: (k: string, p: Partial<CornerConfig>) => void;
+  updateChip: (k: string, i: number, p: Partial<FieldChip>) => void;
+  addChip: (k: string) => void;
+  removeChip: (k: string, i: number) => void;
 }) {
   return (
     <div className="corner-block">
       <div className="corner-block-header">
-        <span className="corner-block-title">{cornerLabels[cornerKey]}</span>
+        <span className="corner-block-title">{label}</span>
         <button className="small" onClick={() => addChip(cornerKey)}>+</button>
       </div>
       <div className="chip-list">
