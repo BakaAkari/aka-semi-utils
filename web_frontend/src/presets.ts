@@ -19,10 +19,10 @@ export const watermarkPresets: WatermarkPreset[] = [
     config: {
       ...base(),
       corners: {
-        left_top: { chips: [{ field_id: 'make' }, { field_id: 'camera_model' }], separator: ' ', font_size_ratio: 0.055 },
-        left_bottom: { chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'shutter' }, { field_id: 'iso' }], separator: '   ', font_size_ratio: 0.04 },
-        right_top: { chips: [], separator: ' ', font_size_ratio: 0.035 },
-        right_bottom: { chips: [], separator: ' ', font_size_ratio: 0.035 }
+        left_top: { chips: [{ field_id: 'make' }, { field_id: 'camera_model' }], separator: '    ', font_size_ratio: 0.055 },
+        left_bottom: { chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'shutter' }, { field_id: 'iso' }], separator: '    ', font_size_ratio: 0.04 },
+        right_top: { chips: [], separator: '    ', font_size_ratio: 0.035 },
+        right_bottom: { chips: [], separator: '    ', font_size_ratio: 0.035 }
       },
       logo: { enabled: 'auto', position: 'right', color: '#D8D8D6', custom_path: '' },
       advanced: { ...base().advanced, footer_height_px: 0, logo_height_px: 0, global_color: '#222222' }
@@ -35,10 +35,10 @@ export const watermarkPresets: WatermarkPreset[] = [
     config: {
       ...base(),
       corners: {
-        left_top: { chips: [], separator: ' ', font_size_ratio: 0.035 },
-        left_bottom: { chips: [], separator: ' ', font_size_ratio: 0.035 },
-        right_top: { chips: [], separator: ' ', font_size_ratio: 0.035 },
-        right_bottom: { chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'shutter' }, { field_id: 'iso' }], separator: '  ', font_size_ratio: 0.034 }
+        left_top: { chips: [], separator: '    ', font_size_ratio: 0.035 },
+        left_bottom: { chips: [], separator: '    ', font_size_ratio: 0.035 },
+        right_top: { chips: [], separator: '    ', font_size_ratio: 0.035 },
+        right_bottom: { chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'shutter' }, { field_id: 'iso' }], separator: '    ', font_size_ratio: 0.034 }
       },
       logo: { enabled: 'disabled', position: 'right', color: '#D8D8D6', custom_path: '' },
       advanced: { ...base().advanced, footer_height_px: 90, global_color: '#2C2C2C' }
@@ -51,10 +51,10 @@ export const watermarkPresets: WatermarkPreset[] = [
     config: {
       ...base(),
       corners: {
-        left_top: { chips: [{ field_id: 'custom_text', custom_text: 'AKARI PHOTO' }], separator: ' ', font_size_ratio: 0.04 },
-        left_bottom: { chips: [{ field_id: 'datetime' }], separator: ' ', font_size_ratio: 0.03 },
-        right_top: { chips: [{ field_id: 'camera_model' }], separator: ' ', font_size_ratio: 0.034 },
-        right_bottom: { chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'iso' }], separator: '   ', font_size_ratio: 0.03 }
+        left_top: { chips: [{ field_id: 'custom_text', custom_text: 'AKARI PHOTO' }], separator: '    ', font_size_ratio: 0.04 },
+        left_bottom: { chips: [{ field_id: 'datetime' }], separator: '    ', font_size_ratio: 0.03 },
+        right_top: { chips: [{ field_id: 'camera_model' }], separator: '    ', font_size_ratio: 0.034 },
+        right_bottom: { chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'iso' }], separator: '    ', font_size_ratio: 0.03 }
       },
       logo: { enabled: 'auto', position: 'right', color: '#D8D8D6', custom_path: '' },
       advanced: { ...base().advanced, footer_height_px: 150, border_radius: 24, shadow_radius: 18, shadow_color: '#000000', global_color: '#242424' }

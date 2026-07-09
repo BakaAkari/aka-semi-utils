@@ -130,22 +130,22 @@ export function createDefaultWatermarkConfig(): WatermarkConfig {
     corners: {
       left_top: {
         chips: [{ field_id: 'make' }, { field_id: 'camera_model' }],
-        separator: ' ',
+        separator: '    ',
         font_size_ratio: 0.055
       },
       left_bottom: {
         chips: [{ field_id: 'focal_length' }, { field_id: 'aperture' }, { field_id: 'shutter' }, { field_id: 'iso' }],
-        separator: '   ',
+        separator: '    ',
         font_size_ratio: 0.04
       },
       right_top: {
         chips: [],
-        separator: ' ',
+        separator: '    ',
         font_size_ratio: 0.035
       },
       right_bottom: {
         chips: [],
-        separator: ' ',
+        separator: '    ',
         font_size_ratio: 0.035
       }
     },

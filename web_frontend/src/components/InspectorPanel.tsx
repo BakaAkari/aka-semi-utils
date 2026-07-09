@@ -283,14 +283,6 @@ function CornerBlock({
       </div>
       <div className="form-row" style={{ gap: 8, marginTop: 8 }}>
         <label className="small-label">
-          分隔符
-          <input
-            value={corner.separator}
-            onChange={(e) => updateCorner(cornerKey, { separator: e.target.value })}
-            style={{ width: 60 }}
-          />
-        </label>
-        <label className="small-label">
           字号
           <input
             type="number"
@@ -299,7 +291,7 @@ function CornerBlock({
             step={0.005}
             value={corner.font_size_ratio}
             onChange={(e) => updateCorner(cornerKey, { font_size_ratio: parseFloat(e.target.value) || 0 })}
-            style={{ width: 55 }}
+            style={{ width: 110 }}
           />
         </label>
       </div>
