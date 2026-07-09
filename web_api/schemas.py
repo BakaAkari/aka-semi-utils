@@ -106,13 +106,7 @@ class AdvancedPayload(StrictModel):
     concat_direction: Literal["horizontal", "vertical"] = "vertical"
     alignment_mode: Literal["top", "center", "bottom"] = "center"
 
-    # --- Frame mode (白边相框) ---
-    frame_border_width: int = Field(default=40, ge=0, le=200)
-    frame_bar_bg: Color = "#FFFFFF"
-    frame_text_primary: Color = "#333333"
-    frame_text_secondary: Color = "#888888"
-
-    @field_validator("global_color", "margin_color", "shadow_color", "frame_bar_bg", "frame_text_primary", "frame_text_secondary")
+    @field_validator("global_color", "margin_color", "shadow_color")
     @classmethod
     def valid_color(cls, value: str) -> str:
         return _validate_color(value)
@@ -125,20 +119,14 @@ class CornersPayload(StrictModel):
     right_bottom: CornerPayload = Field(default_factory=CornerPayload)
 
 
-class SidesPayload(StrictModel):
-    left: CornerPayload = Field(default_factory=CornerPayload)
-    right: CornerPayload = Field(default_factory=CornerPayload)
-
-
 class WatermarkPayload(StrictModel):
     corners: CornersPayload = Field(default_factory=CornersPayload)
-    sides: SidesPayload = Field(default_factory=SidesPayload)
     logo: LogoPayload = Field(default_factory=LogoPayload)
     signature: SignaturePayload = Field(default_factory=SignaturePayload)
     advanced: AdvancedPayload = Field(default_factory=AdvancedPayload)
     custom_text: str = Field(default="", max_length=160)
     footer_position: Literal["bottom", "top", "left", "right"] = "bottom"
-    layout_mode: Literal["corners", "sides", "framed"] = "corners"
+    layout_mode: Literal["corners", "sides"] = "corners"
 
 
 def _validate_color(value: str) -> str:
@@ -165,14 +153,11 @@ def config_from_payload(payload: dict[str, Any] | None) -> WatermarkConfig:
         ) from exc
 
     corners = parsed.corners
-    sides = parsed.sides
     return WatermarkConfig(
         left_top=_corner(corners.left_top),
         left_bottom=_corner(corners.left_bottom),
         right_top=_corner(corners.right_top),
         right_bottom=_corner(corners.right_bottom),
-        left_side=_corner(sides.left),
-        right_side=_corner(sides.right),
         logo=LogoConfig(**parsed.logo.model_dump()),
         signature=SignatureConfig(**parsed.signature.model_dump()),
         advanced=AdvancedConfig(**parsed.advanced.model_dump()),

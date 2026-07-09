@@ -99,7 +99,9 @@ export async function processImage(
   const { image_id, original_filename } = await ensureUploaded(file, signal);
   const form = new FormData();
   form.append('image_id', image_id);
-  form.append('config', JSON.stringify(config));
+  // Strip UI-only sides config — backend has no sides field yet
+  const { sides: _, ...apiConfig } = config as WatermarkConfig & { sides?: unknown };
+  form.append('config', JSON.stringify(apiConfig));
   form.append('original_filename', original_filename);
 
   const response = await fetch(`${API_BASE}/api/${endpoint}`, { method: 'POST', body: form, signal });

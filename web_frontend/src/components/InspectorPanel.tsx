@@ -186,7 +186,6 @@ function CornersTab({
   const cornerKeys: CornerKey[] = ['left_top', 'left_bottom', 'right_top', 'right_bottom'];
   const sideKeys: SideKey[] = ['left', 'right'];
   const isSides = (config.layout_mode ?? 'corners') === 'sides';
-  const isFramed = (config.layout_mode ?? 'corners') === 'framed';
 
   const updateSide = useCallback(
     (sideKey: SideKey, patch: Partial<CornerConfig>) => {
@@ -253,12 +252,11 @@ function CornersTab({
             <select
               value={config.layout_mode ?? 'corners'}
               onChange={(e) =>
-                setConfig((prev) => ({ ...prev, layout_mode: e.target.value as 'corners' | 'sides' | 'framed' }))
+                setConfig((prev) => ({ ...prev, layout_mode: e.target.value as 'corners' | 'sides' }))
               }
             >
               <option value="corners">四角</option>
               <option value="sides">左右居中</option>
-              <option value="framed">白边相框</option>
             </select>
           </label>
         </div>
@@ -297,170 +295,9 @@ function CornersTab({
           />
         );
       })}
-
-      {/* --- Framed blocks (白边相框模式) --- */}
-      {isFramed && (
-        <FrameConfigPanel
-          config={config}
-          setConfig={setConfig}
-          sideKeys={sideKeys}
-          updateSide={updateSide}
-          updateSideChip={updateSideChip}
-          addSideChip={addSideChip}
-          removeSideChip={removeSideChip}
-        />
-      )}
     </div>
   );
 }
-
-// ============================ Frame config panel (白边相框) ============================
-
-const FRAME_COLOR_PRESETS = [
-  { label: '经典白', bg: '#FFFFFF', primary: '#333333', secondary: '#888888' },
-  { label: '暗夜黑', bg: '#1C1C1E', primary: '#FFFFFF', secondary: '#AAAAAA' },
-  { label: '暖纸', bg: '#FAF8F5', primary: '#2C2C2C', secondary: '#888888' },
-  { label: '透明', bg: 'rgba(0,0,0,0.5)', primary: '#FFFFFF', secondary: '#CCCCCC' },
-];
-
-function FrameConfigPanel({
-  config,
-  setConfig,
-  sideKeys,
-  updateSide,
-  updateSideChip,
-  addSideChip,
-  removeSideChip,
-}: {
-  config: WatermarkConfig;
-  setConfig: React.Dispatch<React.SetStateAction<WatermarkConfig>>;
-  sideKeys: SideKey[];
-  updateSide: (k: SideKey, p: Partial<CornerConfig>) => void;
-  updateSideChip: (k: SideKey, i: number, p: Partial<FieldChip>) => void;
-  addSideChip: (k: SideKey) => void;
-  removeSideChip: (k: SideKey, i: number) => void;
-}) {
-  const adv = config.advanced;
-
-  return (
-    <>
-      <div className="editor-card">
-        <h3 className="editor-card-h3">相框设置</h3>
-        <label>
-          白边宽度 (px)
-          <input
-            type="number"
-            min={0} max={200} step={4}
-            value={adv.frame_border_width ?? 40}
-            onChange={(e) =>
-              setConfig((prev) => ({ ...prev, advanced: { ...prev.advanced, frame_border_width: Number(e.target.value) } }))
-            }
-          />
-        </label>
-        <div style={{ marginTop: 8 }}>
-          <span className="text-secondary text-sm">配色方案</span>
-          <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-            {FRAME_COLOR_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                className="small"
-                style={{
-                  background: preset.bg,
-                  color: preset.primary,
-                  border: adv.frame_bar_bg === preset.bg ? '2px solid var(--accent)' : '1px solid var(--line)',
-                  padding: '4px 10px',
-                  borderRadius: 'var(--radius-xs)',
-                  fontSize: 12,
-                }}
-                onClick={() =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    advanced: {
-                      ...prev.advanced,
-                      frame_bar_bg: preset.bg,
-                      frame_text_primary: preset.primary,
-                      frame_text_secondary: preset.secondary,
-                    },
-                  }))
-                }
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="form-row" style={{ marginTop: 8 }}>
-          <label>
-            底条底色
-            <input
-              type="color"
-              value={adv.frame_bar_bg?.startsWith('#') ? adv.frame_bar_bg : '#FFFFFF'}
-              onChange={(e) =>
-                setConfig((prev) => ({ ...prev, advanced: { ...prev.advanced, frame_bar_bg: e.target.value } }))
-              }
-              style={{ width: 60, height: 32, padding: 2 }}
-            />
-          </label>
-          <label>
-            型号颜色
-            <input
-              type="color"
-              value={adv.frame_text_primary ?? '#333333'}
-              onChange={(e) =>
-                setConfig((prev) => ({ ...prev, advanced: { ...prev.advanced, frame_text_primary: e.target.value } }))
-              }
-              style={{ width: 60, height: 32, padding: 2 }}
-            />
-          </label>
-          <label>
-            参数颜色
-            <input
-              type="color"
-              value={adv.frame_text_secondary ?? '#888888'}
-              onChange={(e) =>
-                setConfig((prev) => ({ ...prev, advanced: { ...prev.advanced, frame_text_secondary: e.target.value } }))
-              }
-              style={{ width: 60, height: 32, padding: 2 }}
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* Left / Right field config — same as sides mode */}
-      {sideKeys.map((key) => {
-        const side = config.sides[key];
-        return (
-          <CornerBlock
-            key={key}
-            label={key === 'left' ? '左侧（型号/镜头）' : '右侧（参数行）'}
-            corner={side}
-            cornerKey={key}
-            updateCorner={(k, p) => updateSide(k as SideKey, p)}
-            updateChip={(k, i, p) => updateSideChip(k as SideKey, i, p)}
-            addChip={(k) => addSideChip(k as SideKey)}
-            removeChip={(k, i) => removeSideChip(k as SideKey, i)}
-          />
-        );
-      })}
-
-      {/* Info: 签名显示区 */}
-      <div className="editor-card">
-        <label>
-          署名（底部 © 文字）
-          <input
-            type="text"
-            value={config.custom_text ?? ''}
-            placeholder="留空则不显示"
-            maxLength={80}
-            onChange={(e) => setConfig((prev) => ({ ...prev, custom_text: e.target.value }))}
-          />
-        </label>
-      </div>
-    </>
-  );
-}
-
-// ============================ CornerBlock ============================
 
 function CornerBlock({
   label,

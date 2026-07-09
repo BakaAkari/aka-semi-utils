@@ -95,12 +95,6 @@ class AdvancedConfig:
     concat_direction: str = "vertical"
     alignment_mode: str = "center"
 
-    # --- Frame mode (白边相框) ---
-    frame_border_width: int = 40         # 白边宽度 (px)，0=关闭
-    frame_bar_bg: str = "#FFFFFF"        # 信息条底色
-    frame_text_primary: str = "#333333"  # 型号/镜头文字色
-    frame_text_secondary: str = "#888888" # 参数文字色
-
     # Legacy signature fields (kept for backward compatibility with desktop)
     signature_enabled: bool = False
     signature_path: str = ""
@@ -129,9 +123,6 @@ class WatermarkConfig:
     left_bottom: CornerConfig = field(default_factory=CornerConfig)
     right_top: CornerConfig = field(default_factory=CornerConfig)
     right_bottom: CornerConfig = field(default_factory=CornerConfig)
-    # Side-bar config (used by layout_mode=sides and layout_mode=framed)
-    left_side: CornerConfig = field(default_factory=CornerConfig)
-    right_side: CornerConfig = field(default_factory=CornerConfig)
     logo: LogoConfig = field(default_factory=LogoConfig)
     custom_text: str = ""
     signature: SignatureConfig = field(default_factory=SignatureConfig)
