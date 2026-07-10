@@ -237,26 +237,31 @@ function drawCorners(
     textBlocks[c.key] = { lines: [line], colors: [colors[0]], w: metrics.width };
   }
 
-  // Calculate Y positions — matching PIL WatermarkFilter._compute_text_layout
-  // Elements stacked: left_top above left_bottom, right_top above right_bottom
+  // Compute stack heights (matching PIL elem_height computation)
   const ltH = textBlocks.left_top.lines.length > 0 ? fontSizes.left_top : 0;
   const lbH = textBlocks.left_bottom.lines.length > 0 ? fontSizes.left_bottom : 0;
   const rtH = textBlocks.right_top.lines.length > 0 ? fontSizes.right_top : 0;
   const rbH = textBlocks.right_bottom.lines.length > 0 ? fontSizes.right_bottom : 0;
 
-  const lStackH = ltH + lbH + (ltH && lbH ? 4 : 0);
-  const rStackH = rtH + rbH + (rtH && rbH ? 4 : 0);
+  const gap = Math.max(2, Math.round(bottomM * 0.05));  // matches PIL middle_spacing
+
+  const lStackH = ltH + lbH + (ltH && lbH ? gap : 0);
+  const rStackH = rtH + rbH + (rtH && rbH ? gap : 0);
   const elemH = Math.max(lStackH, rStackH);
   const elemMargin = Math.round((bottomM - elemH) / 2);
   const footerTop = topM + imgH;
 
-  // Left: stacked from bottom of footer
-  const lbY = footerTop + elemMargin + (lbH || 0);
-  const ltY = lbY - (lbH ? lbH + 4 : 0) - ltH;
+  // Calculate Y positions — matching PIL WatermarkFilter._compute_text_layout
+  // PIL anchors from canvas bottom; anchorY = canvas_height = footerTop + bottomM
+  const canvasH = footerTop + bottomM;
 
-  // Right: aligned to bottom of their stack, same as PIL
-  const rbY = footerTop + elemMargin + (rbH || 0);
-  const rtY = rbY - (rbH ? rbH + 4 : 0) - rtH;
+  // Left: positioned from canvas bottom upward
+  const lbY = canvasH - elemMargin - lbH;
+  const ltY = lbY - (lbH ? gap : 0) - ltH;
+
+  // Right: aligned to corresponding left edges per PIL convention
+  const rbY = (lbY + lbH) - rbH;
+  const rtY = (ltY + ltH) - rtH;
 
   // Right X
   const rightX = cw - rightM - spacing;
