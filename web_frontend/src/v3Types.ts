@@ -86,6 +86,20 @@ export interface WatermarkConfigV3 {
   custom_text?: string;
 }
 
+export const fieldOptionsV3: { id: FieldId; label: string }[] = [
+  { id: 'camera_model', label: '相机型号' },
+  { id: 'lens_model', label: '镜头型号' },
+  { id: 'focal_length', label: '焦距' },
+  { id: 'aperture', label: '光圈' },
+  { id: 'shutter', label: '快门' },
+  { id: 'iso', label: 'ISO' },
+  { id: 'datetime', label: '拍摄日期' },
+  { id: 'make', label: '厂商品牌' },
+  { id: 'artist', label: '作者' },
+  { id: 'gps', label: '地理位置' },
+  { id: 'custom_text', label: '自定义文本' },
+];
+
 // ── 预设配置 ──────────────────────────────────────────────────────────
 
 export const defaultStyle: StyleConfig = {
@@ -292,3 +306,7 @@ export const presetSidesV3: WatermarkConfigV3 = {
     },
   ],
 };
+
+export function createDefaultWatermarkConfigV3(): WatermarkConfigV3 {
+  return structuredClone(presetDefaultV3);
+}
