@@ -5,7 +5,7 @@ export function TopBar() {
   const ctx = useContext(AppContext);
   if (!ctx) return null;
 
-  const { files, status, message, result, batchResults, progress, runProcess, runProcessAll, clearBatchResults } = ctx;
+  const { files, status, message, result, batchResults, progress, runProcess, runProcessAll, clearBatchResults, loadPreview } = ctx;
   const hasFiles = files.length > 0;
   const isRunning = status === 'running';
   const isMulti = files.length > 1;
@@ -68,7 +68,12 @@ export function TopBar() {
             </div>
           </div>
         )}
-
+        <button
+          disabled={!hasFiles || isRunning}
+          onClick={loadPreview}
+        >
+          预览
+        </button>
         <button
           className="primary"
           disabled={!hasFiles || isRunning}

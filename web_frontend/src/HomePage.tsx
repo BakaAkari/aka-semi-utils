@@ -34,6 +34,7 @@ export type AppContextType = {
   removeFile: (index: number) => void;
   clearOutputs: () => void;
   clearBatchResults: () => void;
+  loadPreview: () => void;
 };
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -55,18 +56,52 @@ export function HomePage() {
   const previewAbort = useRef<AbortController | null>(null);
   const processingAbort = useRef<AbortController | null>(null);
   const [canvasImage, setCanvasImage] = useState<HTMLImageElement | null>(null);
+  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+  const previewImageUrl = useRef<string | null>(null);
 
   const sanitizedConfig = useMemo(() => sanitizeConfig(config), [config]);
 
-  // Load active file as image for Canvas
+  // On file change: extract dimensions only (don't load image into canvas)
   useEffect(() => {
     const file = files[activeFileIndex];
-    if (!file) { setCanvasImage(null); return; }
+    if (!file) {
+      setCanvasImage(null);
+      setImageSize(null);
+      if (previewImageUrl.current) {
+        URL.revokeObjectURL(previewImageUrl.current);
+        previewImageUrl.current = null;
+      }
+      return;
+    }
     const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      setImageSize({ width: img.naturalWidth, height: img.naturalHeight });
+      setCanvasImage(null);
+      if (previewImageUrl.current) {
+        URL.revokeObjectURL(previewImageUrl.current);
+        previewImageUrl.current = null;
+      }
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+    return () => {
+      try { URL.revokeObjectURL(url); } catch { /* already revoked */ }
+    };
+  }, [files, activeFileIndex]);
+
+  /** Load full image into canvas on explicit user request. */
+  const loadPreview = useCallback(() => {
+    const file = files[activeFileIndex];
+    if (!file) return;
+    if (previewImageUrl.current) {
+      URL.revokeObjectURL(previewImageUrl.current);
+    }
+    const url = URL.createObjectURL(file);
+    previewImageUrl.current = url;
     const img = new Image();
     img.onload = () => setCanvasImage(img);
     img.src = url;
-    return () => URL.revokeObjectURL(url);
   }, [files, activeFileIndex]);
 
   const showToast = useCallback((message: string, type: ToastItem['type']) => {
@@ -166,8 +201,8 @@ export function HomePage() {
     preview, result, batchResults, status, message, progress, toasts,
     showToast, removeToast,
     runPreview, runProcess, runProcessAll, cancelProcessAll,
-    setFiles, setActiveFileIndex, removeFile, clearOutputs, clearBatchResults,
-  }), [files, activeFileIndex, config, preview, result, batchResults, status, message, progress, toasts, showToast, removeToast, runPreview, runProcess, runProcessAll, cancelProcessAll, clearOutputs, removeFile, clearBatchResults]);
+    setFiles, setActiveFileIndex, removeFile, clearOutputs, clearBatchResults, loadPreview,
+  }), [files, activeFileIndex, config, preview, result, batchResults, status, message, progress, toasts, showToast, removeToast, runPreview, runProcess, runProcessAll, cancelProcessAll, clearOutputs, removeFile, clearBatchResults, loadPreview]);
 
   return (
     <AppContext.Provider value={contextValue}>
@@ -176,7 +211,7 @@ export function HomePage() {
         <div className="workspace-v2">
           <LeftRail />
           <div className="canvas-area">
-            <WatermarkCanvas config={sanitizedConfig} image={canvasImage} />
+            <WatermarkCanvas config={sanitizedConfig} image={canvasImage} imageSize={imageSize} />
           </div>
         </div>
         <WatermarkBar config={config} setConfig={setConfig} />

@@ -38,9 +38,11 @@ function parseColor(hex: string): [number, number, number] {
 export function WatermarkCanvas({
   config,
   image,
+  imageSize,
 }: {
   config: WatermarkConfig;
   image: HTMLImageElement | null;
+  imageSize?: { width: number; height: number } | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -54,12 +56,16 @@ export function WatermarkCanvas({
     const dpr = window.devicePixelRatio || 1;
 
     // Determine image area size
+    // Priority: actual image > uploaded image dimensions > config ratio > default 4:3
     const DEFAULT_W = 900;
-    const DEFAULT_H = 1200;
+    const DEFAULT_H = 675;
     let imgW: number, imgH: number;
     if (image) {
       imgW = image.naturalWidth;
       imgH = image.naturalHeight;
+    } else if (imageSize) {
+      imgW = imageSize.width;
+      imgH = imageSize.height;
     } else if (adv.ratio_enabled) {
       const [rw, rh] = adv.ratio.split(':').map(Number);
       const base = 900;
