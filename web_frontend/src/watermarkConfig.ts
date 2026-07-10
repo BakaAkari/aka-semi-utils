@@ -132,6 +132,20 @@ export const fieldOptions: FieldOption[] = [
   { id: 'custom_text', label: '自定义文本', category: 'custom' }
 ];
 
+/** Placeholder values for Canvas skeleton preview when no image EXIF is available. */
+export const PLACEHOLDER_EXIF: Record<string, string> = {
+  camera_model: 'GFX100S II',
+  lens_model: 'GF110mmF5.6',
+  focal_length: '110mm',
+  aperture: 'f/5.6',
+  shutter: '1/500s',
+  iso: 'ISO100',
+  datetime: '2025-06-15',
+  make: 'FUJIFILM',
+  artist: 'AKARI',
+  gps: 'Tokyo, Japan',
+};
+
 export function createDefaultWatermarkConfig(): WatermarkConfig {
   return {
     corners: {

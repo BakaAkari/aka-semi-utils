@@ -1093,4 +1093,151 @@ hr, .divider {
 .toast-error { border-left: 2px solid var(--red); }
 .toast-info { border-left: 2px solid var(--accent); }
 
+/* ========== V2 Workspace (Canvas-centered) ========== */
+.workspace-v2 {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  padding: 10px;
+  gap: 10px;
+}
 
+.canvas-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+
+.canvas-area canvas {
+  border-radius: var(--radius-xs);
+}
+
+/* ========== WatermarkBar (bottom settings) ========== */
+.watermark-bar {
+  flex-shrink: 0;
+  background: var(--card-bg);
+  border-top: 1px solid var(--line);
+  padding: 8px 12px 10px;
+  display: flex;
+  gap: 12px;
+}
+
+.watermark-bar-footer {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 4px;
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+  flex-shrink: 0;
+}
+
+.corners-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sides-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.chip-editor {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.chip-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chip-editor-label {
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chip-editor-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chip-empty {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.chip-row select {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 5px;
+  font-size: 12px;
+  height: 26px;
+}
+
+.chip-row input[type="text"] {
+  padding: 3px 5px;
+  font-size: 12px;
+  height: 26px;
+}
+
+.layout-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "Microsoft YaHei", "微软雅黑", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.layout-toggle select {
+  padding: 3px 6px;
+  font-size: 12px;
+  height: 26px;
+}
+
+button.micro {
+  padding: 2px 5px;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: var(--radius-xs);
+  color: var(--text-faint);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: color var(--dur-fast);
+}
+button.micro:hover { color: var(--text-dim); }
+button.micro.ghost { background: none; }
