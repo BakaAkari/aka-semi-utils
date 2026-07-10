@@ -7,8 +7,8 @@ export function AppRouter() {
   return (
     <BrowserRouter basename={API_BASE}>
       <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/v3" element={<V3HomePage />} />
+        <Route path="/" element={<V3HomePage />} />
+        <Route path="/v2" element={<HomePage />} />
       </Routes>
     </BrowserRouter>
   );
