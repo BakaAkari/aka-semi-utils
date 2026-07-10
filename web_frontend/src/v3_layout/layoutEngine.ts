@@ -8,7 +8,7 @@
  * 与 Python 版本共享同一套算法逻辑，通过单元测试保证一致性。
  */
 
-// ── 基础几何 ──────────────────────────────────────────────────────────
+// ── 基础几何 ────────────────────────────────────────────
 
 export interface Rect {
   x: number;
@@ -36,7 +36,7 @@ export function rectBottom(r: Rect): number { return r.y + r.h; }
 export function rectCenterX(r: Rect): number { return r.x + Math.floor(r.w / 2); }
 export function rectCenterY(r: Rect): number { return r.y + Math.floor(r.h / 2); }
 
-// ── 配置类型 ──────────────────────────────────────────────────────────
+// ── 配置类型 ────────────────────────────────────────────
 
 export interface MarginsConfig {
   top: number;
@@ -117,7 +117,7 @@ export interface WatermarkConfig {
   defaults: StyleConfig;
 }
 
-// ── 布局结果 ──────────────────────────────────────────────────────────
+// ── 布局结果 ────────────────────────────────────────────
 
 export type ElementType = 'text' | 'logo' | 'signature' | 'divider';
 
@@ -136,7 +136,24 @@ export interface LayoutResult {
   elements: ComputedElement[];
 }
 
-// ── 布局引擎 ──────────────────────────────────────────────────────────
+// ── Layout Diagnostics ───────────────────────────────────────
+
+export type DiagnosticSeverity = 'error' | 'warning';
+
+export interface DiagnosticItem {
+  id: string;
+  type: string;
+  severity: DiagnosticSeverity;
+  message: string;
+  elementIds?: string[];
+}
+
+export interface LayoutResultWithDiagnostics {
+  layout: LayoutResult;
+  diagnostics: DiagnosticItem[];
+}
+
+// ── 布局引擎 ────────────────────────────────────────────
 
 export function computeLayout(config: WatermarkConfig, imageW: number, imageH: number): LayoutResult {
   // Step 1: 画布尺寸
@@ -171,7 +188,17 @@ export function computeLayout(config: WatermarkConfig, imageW: number, imageH: n
   return { canvas, image_rect: imageRect, elements };
 }
 
-// ── 各区域类型计算 ────────────────────────────────────────────────────
+export function computeLayoutWithDiagnostics(
+  config: WatermarkConfig,
+  imageW: number,
+  imageH: number,
+): LayoutResultWithDiagnostics {
+  const layout = computeLayout(config, imageW, imageH);
+  const diagnostics = diagnoseLayout(layout, config);
+  return { layout, diagnostics };
+}
+
+// ── 各区域类型计算 ─────────────────────────────────
 
 function computeFooterBar(
   region: RegionConfig,
@@ -333,7 +360,105 @@ function computeFree(
   return elements;
 }
 
-// ── 辅助函数 ──────────────────────────────────────────────────────────
+// ── Layout Diagnostics 实现 ──────────────────────────────────────
+
+export function diagnoseLayout(layout: LayoutResult, _config: WatermarkConfig): DiagnosticItem[] {
+  const diagnostics: DiagnosticItem[] = [];
+  const { canvas, elements } = layout;
+
+  // 1. 重叠
+  for (let i = 0; i < elements.length; i++) {
+    for (let j = i + 1; j < elements.length; j++) {
+      const a = elements[i];
+      const b = elements[j];
+      if (rectsOverlap(a.rect, b.rect)) {
+        diagnostics.push({
+          id: `overlap-${a.id}-${b.id}`,
+          type: 'overlap',
+          severity: 'error',
+          message: `${a.id} 与 ${b.id} 重叠`,
+          elementIds: [a.id, b.id],
+        });
+      }
+    }
+  }
+
+  // 2. 越界
+  for (const el of elements) {
+    if (
+      el.rect.x < 0 ||
+      el.rect.y < 0 ||
+      rectRight(el.rect) > canvas.w ||
+      rectBottom(el.rect) > canvas.h
+    ) {
+      diagnostics.push({
+        id: `oob-${el.id}`,
+        type: 'out-of-bounds',
+        severity: 'error',
+        message: `${el.id} 越出画布`,
+        elementIds: [el.id],
+      });
+    }
+  }
+
+  // 3. 空内容 / 缺资源
+  for (const el of elements) {
+    if (el.type === 'text') {
+      if (isTextContent(el.content)) {
+        const nonEmpty = el.content.chips.filter((c) => c.field_id !== 'empty').length > 0;
+        if (!nonEmpty) {
+          diagnostics.push({
+            id: `empty-${el.id}`,
+            type: 'empty-enabled-slot',
+            severity: 'warning',
+            message: `${el.id} 已启用但没有字段`,
+            elementIds: [el.id],
+          });
+        }
+      }
+    } else if (el.type === 'logo') {
+      if (isLogoContent(el.content) && el.content.path === '') {
+        // 自动 logo，不算警告
+      }
+    } else if (el.type === 'signature') {
+      if (isSignatureContent(el.content) && el.content.path === '') {
+        diagnostics.push({
+          id: `missing-sig-${el.id}`,
+          type: 'missing-resource',
+          severity: 'warning',
+          message: `${el.id} 未上传签名`,
+          elementIds: [el.id],
+        });
+      }
+    }
+  }
+
+  // 4. 字号过大
+  for (const el of elements) {
+    if (el.type === 'text' && el.style.font_size && el.style.font_size > el.rect.h) {
+      diagnostics.push({
+        id: `font-large-${el.id}`,
+        type: 'font-too-large',
+        severity: 'warning',
+        message: `${el.id} 字号超过 slot 高度`,
+        elementIds: [el.id],
+      });
+    }
+  }
+
+  return diagnostics;
+}
+
+function rectsOverlap(a: Rect, b: Rect): boolean {
+  return !(
+    rectRight(a) <= b.x ||
+    a.x >= rectRight(b) ||
+    rectBottom(a) <= b.y ||
+    a.y >= rectBottom(b)
+  );
+}
+
+// ── 辅助函数 ────────────────────────────────────────────
 
 function resolveFontSize(
   style: StyleConfig,
@@ -464,7 +589,7 @@ function computeFooterSlots(regionBounds: Rect, _slots: Record<string, SlotConfi
   return results;
 }
 
-// ── 类型守卫 ──────────────────────────────────────────────────────────
+// ── 类型守卫 ────────────────────────────────────────────
 
 function isTextContent(c: Content): c is TextContent {
   return 'chips' in c && 'separator' in c;

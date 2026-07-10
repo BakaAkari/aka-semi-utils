@@ -1,14 +1,15 @@
 /**
- * V3 Inspector Panel — Region/Slot 模型配置面板
+ * V3 Inspector Panel — 产品化控制面：主界面参数化 + 高级结构编辑
  *
- * 与 V2 的区别：
- * - 不再使用 corners/sides，改用 Region 列表
- * - 每个 Region 包含若干 Slot
- * - 声明式配置，与渲染解耦
+ * 与之前的区别：
+ * - 主界面不再直接编辑 Region/Slot，只提供高频参数。
+ * - 高级设置默认折叠，点击后才能编辑原有结构。
+ * - 隐藏新增 Region / 删除 Region / 新增 Slot/Line/Signature 等危险入口。
  */
 
 import { useCallback, useRef, useState } from 'react';
 import { uploadResourceV3 } from '../apiV3';
+import { V3MainControls } from './V3MainControls';
 import type {
   WatermarkConfigV3,
   RegionConfig,
@@ -27,7 +28,7 @@ import {
   defaultStyle,
 } from '../v3Types';
 
-// ── 类型守卫 ──────────────────────────────────────────────────────────
+// ── 类型守卫 ────────────────────────────────────────────
 
 function isTextContent(c: Content): c is TextContent {
   return 'chips' in c && 'separator' in c;
@@ -41,7 +42,7 @@ function isSignatureContent(c: Content): c is SignatureContent {
   return 'path' in c && 'size_ratio' in c && !('chips' in c);
 }
 
-// ── 默认 Slot 内容工厂 ────────────────────────────────────────────────
+// ── 默认 Slot 内容工厂 ─────────────────────────────────
 
 function defaultTextContent(): TextContent {
   return { chips: [], separator: ' ' };
@@ -63,7 +64,7 @@ function createDefaultSlot(type: 'text' | 'logo' | 'signature'): SlotConfig {
   };
 }
 
-// ── Slot 标签 ─────────────────────────────────────────────────────────
+// ── Slot 标签 ──────────────────────────────────────────────
 
 const FOOTER_SLOT_LABELS: Record<string, string> = {
   'left-logo': '左 Logo',
@@ -87,18 +88,95 @@ const ANCHOR_LABELS: Record<string, string> = {
   'bottom-right': '右下',
 };
 
-// ── 组件 Props ────────────────────────────────────────────────────────
+// ── 组件 Props ────────────────────────────────────────────
 
 interface InspectorPanelV3Props {
   config: WatermarkConfigV3;
   setConfig: React.Dispatch<React.SetStateAction<WatermarkConfigV3>>;
+  diagnostics?: DiagnosticItem[];
 }
 
-// ── 主组件 ────────────────────────────────────────────────────────────
+// ── 布局诊断类型 ──────────────────────────────────────
 
-export function InspectorPanelV3({ config, setConfig }: InspectorPanelV3Props) {
-  const [tab, setTab] = useState<'regions' | 'advanced'>('regions');
+export type DiagnosticSeverity = 'error' | 'warning';
 
+export interface DiagnosticItem {
+  id: string;
+  type: string;
+  severity: DiagnosticSeverity;
+  message: string;
+  elementIds?: string[];
+}
+
+// ── 主组件 ────────────────────────────────────────────
+
+export function InspectorPanelV3({ config, setConfig, diagnostics = [] }: InspectorPanelV3Props) {
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  const errors = diagnostics.filter((d) => d.severity === 'error');
+  const warnings = diagnostics.filter((d) => d.severity === 'warning');
+
+  return (
+    <section className="inspector inspector-v3" aria-label="水印设置">
+      <div className="inspector-panel">
+        <div className="inspector-tabs">
+          <span className="inspector-heading">水印设置</span>
+        </div>
+
+        <div className="inspector-body">
+          <div className="v3-settings-content">
+            <V3MainControls />
+
+            {/* Diagnostics summary */}
+            {errors.length > 0 && (
+              <div className="v3-diagnostics v3-diagnostics-error">
+                <strong>布局错误：</strong>
+                <ul>
+                  {errors.map((d) => (
+                    <li key={d.id}>{d.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {warnings.length > 0 && (
+              <div className="v3-diagnostics v3-diagnostics-warning">
+                <strong>布局警告：</strong>
+                <ul>
+                  {warnings.map((d) => (
+                    <li key={d.id}>{d.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Advanced toggle */}
+            <div className="v3-advanced-toggle">
+              <button className="small ghost" onClick={() => setAdvancedOpen((v) => !v)}>
+                {advancedOpen ? '收起高级设置' : '高级设置'}
+              </button>
+            </div>
+
+            {advancedOpen && (
+              <AdvancedStructureEditor config={config} setConfig={setConfig} diagnostics={diagnostics} />
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── 高级结构编辑器 ─────────────────────────────────
+
+function AdvancedStructureEditor({
+  config,
+  setConfig,
+  diagnostics,
+}: {
+  config: WatermarkConfigV3;
+  setConfig: React.Dispatch<React.SetStateAction<WatermarkConfigV3>>;
+  diagnostics: DiagnosticItem[];
+}) {
   const updateRegion = useCallback((regionId: string, patch: Partial<RegionConfig>) => {
     setConfig((prev) => ({
       ...prev,
@@ -119,129 +197,56 @@ export function InspectorPanelV3({ config, setConfig }: InspectorPanelV3Props) {
     }));
   }, [setConfig]);
 
-  const removeRegion = useCallback((regionId: string) => {
-    setConfig((prev) => ({
-      ...prev,
-      regions: prev.regions.filter((r) => r.id !== regionId),
-    }));
-  }, [setConfig]);
-
-  const addRegion = useCallback((type: RegionType) => {
-    const id = `${type}-${Date.now()}`;
-    const base: RegionConfig = {
-      id,
-      type,
-      enabled: true,
-    };
-    if (type === 'footer-bar') {
-      base.slots = {
-        'left-logo': createDefaultSlot('logo'),
-        'left-top': createDefaultSlot('text'),
-        'left-bottom': createDefaultSlot('text'),
-        'center': createDefaultSlot('text'),
-        'right-top': createDefaultSlot('text'),
-        'right-bottom': createDefaultSlot('text'),
-        'right-logo': createDefaultSlot('logo'),
-      };
-    } else if (type === 'side-edge') {
-      base.edge = 'left';
-      base.width = { mode: 'short_edge_ratio', value: 0.12 };
-      base.alignment = 'start';
-      base.slots = { line1: createDefaultSlot('text') };
-    } else if (type === 'free') {
-      base.anchor = 'bottom-right';
-      base.offset_x = 0.05;
-      base.offset_y = 0.05;
-      base.offset_unit = 'short_edge_ratio';
-      base.slots = { sig1: createDefaultSlot('signature') };
-    }
-    setConfig((prev) => ({ ...prev, regions: [...prev.regions, base] }));
-  }, [setConfig]);
-
   return (
-    <section className="inspector inspector-v3" aria-label="水印设置">
-      <div className="inspector-panel">
-        {/* Tabs */}
-        <div className="inspector-tabs">
-          <span className="inspector-heading">水印设置</span>
-          <button className={`inspector-tab ${tab === 'regions' ? 'active' : ''}`} onClick={() => setTab('regions')}>
-            区域
-          </button>
-          <button className={`inspector-tab ${tab === 'advanced' ? 'active' : ''}`} onClick={() => setTab('advanced')}>
-            高级
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="inspector-body">
-          {/* Regions Tab */}
-          <div className={`tab-panel ${tab === 'regions' ? 'active' : ''}`}>
-            <div className="anim-fade-in v3-settings-content">
-              {/* Global custom text */}
-              <div className="editor-card v3-custom-text-card">
-                <label>
-                  全局自定义文本
-                  <input
-                    type="text"
-                    value={config.custom_text ?? ''}
-                    placeholder="用于替换自定义文本字段"
-                    onChange={(e) => setConfig((prev) => ({ ...prev, custom_text: e.target.value }))}
-                  />
-                </label>
-              </div>
-
-              {/* Region list */}
-              {config.regions.map((region) => (
-                <RegionEditor
-                  key={region.id}
-                  region={region}
-                  onUpdate={(patch) => updateRegion(region.id, patch)}
-                  onRemove={() => removeRegion(region.id)}
-                  onUpdateSlot={(slotId, patch) => updateSlot(region.id, slotId, patch)}
-                />
-              ))}
-
-              {/* Add Region */}
-              <div className="form-row v3-add-region-row">
-                <button className="small" onClick={() => addRegion('footer-bar')}>+ 底栏</button>
-                <button className="small" onClick={() => addRegion('side-edge')}>+ 侧边</button>
-                <button className="small" onClick={() => addRegion('free')}>+ 自由</button>
-              </div>
-            </div>
-          </div>
-
-          {/* Advanced Tab */}
-          <div className={`tab-panel ${tab === 'advanced' ? 'active' : ''}`}>
-            <AdvancedTab config={config} setConfig={setConfig} />
-          </div>
-        </div>
+    <div className="anim-fade-in v3-advanced-editor">
+      <div className="editor-card">
+        <h3 className="editor-card-h3">高级结构编辑</h3>
+        <p className="text-tertiary text-xs">
+          以下设置会改变布局结构，请谨慎调整。
+        </p>
       </div>
-    </section>
+
+      {config.regions.map((region) => (
+        <RegionEditor
+          key={region.id}
+          region={region}
+          diagnostics={diagnostics}
+          onUpdate={(patch) => updateRegion(region.id, patch)}
+          onUpdateSlot={(slotId, patch) => updateSlot(region.id, slotId, patch)}
+        />
+      ))}
+
+      <AdvancedTab config={config} setConfig={setConfig} />
+    </div>
   );
 }
 
-// ── Region Editor ─────────────────────────────────────────────────────
+// ── Region Editor ──────────────────────────────────────────
 
 function RegionEditor({
   region,
+  diagnostics,
   onUpdate,
-  onRemove,
   onUpdateSlot,
 }: {
   region: RegionConfig;
+  diagnostics: DiagnosticItem[];
   onUpdate: (patch: Partial<RegionConfig>) => void;
-  onRemove: () => void;
   onUpdateSlot: (slotId: string, patch: Partial<SlotConfig>) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const typeLabel =
     region.type === 'footer-bar' ? '底部水印条' :
     region.type === 'side-edge' ? '垂直边缘' :
     '自由定位';
 
+  const regionErrors = diagnostics.filter((d) =>
+    d.elementIds?.some((id) => id.startsWith(`${region.id}-`))
+  );
+
   return (
-    <div className="editor-card">
+    <div className={`editor-card ${regionErrors.length > 0 ? 'diagnostic-error' : ''}`}>
       <div className="editor-card-title">
         <h3>
           {region.id} <span className="text-tertiary text-xs">({typeLabel})</span>
@@ -258,16 +263,21 @@ function RegionEditor({
           <button className="micro ghost" onClick={() => setExpanded((v) => !v)}>
             {expanded ? '收起' : '展开'}
           </button>
-          <button className="micro danger" onClick={onRemove}>
-            删除
-          </button>
         </div>
       </div>
+
+      {regionErrors.length > 0 && (
+        <div className="v3-region-diagnostics">
+          {regionErrors.map((d) => (
+            <span key={d.id} className={`v3-diag-${d.severity}`}>{d.message}</span>
+          ))}
+        </div>
+      )}
 
       {expanded && (
         <>
           {region.type === 'footer-bar' && (
-            <FooterBarEditor region={region} onUpdateSlot={onUpdateSlot} />
+            <FooterBarEditor region={region} diagnostics={diagnostics} onUpdateSlot={onUpdateSlot} />
           )}
           {region.type === 'side-edge' && (
             <SideEdgeEditor region={region} onUpdate={onUpdate} onUpdateSlot={onUpdateSlot} />
@@ -281,13 +291,15 @@ function RegionEditor({
   );
 }
 
-// ── Footer Bar Editor ─────────────────────────────────────────────────
+// ── Footer Bar Editor ───────────────────────────────────
 
 function FooterBarEditor({
   region,
+  diagnostics,
   onUpdateSlot,
 }: {
   region: RegionConfig;
+  diagnostics: DiagnosticItem[];
   onUpdateSlot: (slotId: string, patch: Partial<SlotConfig>) => void;
 }) {
   const slotOrder = ['left-logo', 'left-top', 'left-bottom', 'center', 'right-top', 'right-bottom', 'right-logo'];
@@ -297,11 +309,15 @@ function FooterBarEditor({
       {slotOrder.map((slotId) => {
         const slot = region.slots?.[slotId];
         if (!slot) return null;
+        const slotErrors = diagnostics.filter((d) =>
+          d.elementIds?.includes(`${region.id}-${slotId}`)
+        );
         return (
           <SlotRow
             key={slotId}
             label={FOOTER_SLOT_LABELS[slotId] ?? slotId}
             slot={slot}
+            hasErrors={slotErrors.length > 0}
             onUpdate={(patch) => onUpdateSlot(slotId, patch)}
             defaultContentType={slotId.includes('logo') ? 'logo' : 'text'}
           />
@@ -311,7 +327,7 @@ function FooterBarEditor({
   );
 }
 
-// ── Side Edge Editor ──────────────────────────────────────────────────
+// ── Side Edge Editor ───────────────────────────────────
 
 function SideEdgeEditor({
   region,
@@ -370,33 +386,23 @@ function SideEdgeEditor({
         </div>
       </label>
 
-      {/* Slots */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {Object.entries(region.slots ?? {}).map(([slotId, slot]) => (
           <SlotRow
             key={slotId}
             label={slotId}
             slot={slot}
+            hasErrors={false}
             onUpdate={(patch) => onUpdateSlot(slotId, patch)}
             defaultContentType="text"
           />
         ))}
       </div>
-
-      <button
-        className="small"
-        onClick={() => {
-          const newId = `line${Object.keys(region.slots ?? {}).length + 1}`;
-          onUpdateSlot(newId, { enabled: true, content: defaultTextContent(), style: null });
-        }}
-      >
-        + 添加文本行
-      </button>
     </div>
   );
 }
 
-// ── Free Editor ───────────────────────────────────────────────────────
+// ── Free Editor ───────────────────────────────────────
 
 function FreeEditor({
   region,
@@ -453,42 +459,34 @@ function FreeEditor({
         </select>
       </label>
 
-      {/* Slots */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {Object.entries(region.slots ?? {}).map(([slotId, slot]) => (
           <SlotRow
             key={slotId}
             label={slotId}
             slot={slot}
+            hasErrors={false}
             onUpdate={(patch) => onUpdateSlot(slotId, patch)}
             defaultContentType="signature"
           />
         ))}
       </div>
-
-      <button
-        className="small"
-        onClick={() => {
-          const newId = `sig${Object.keys(region.slots ?? {}).length + 1}`;
-          onUpdateSlot(newId, { enabled: true, content: defaultSignatureContent(), style: null });
-        }}
-      >
-        + 添加签名
-      </button>
     </div>
   );
 }
 
-// ── Slot Row ──────────────────────────────────────────────────────────
+// ── Slot Row ──────────────────────────────────────────
 
 function SlotRow({
   label,
   slot,
+  hasErrors,
   onUpdate,
   defaultContentType,
 }: {
   label: string;
   slot: SlotConfig;
+  hasErrors: boolean;
   onUpdate: (patch: Partial<SlotConfig>) => void;
   defaultContentType: 'text' | 'logo' | 'signature';
 }) {
@@ -509,7 +507,7 @@ function SlotRow({
   };
 
   return (
-    <div className="corner-block">
+    <div className={`corner-block ${hasErrors ? 'diagnostic-error' : ''}`}>
       <div className="corner-block-header">
         <span className="corner-block-title">{label}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -539,7 +537,7 @@ function SlotRow({
   );
 }
 
-// ── Content Editor ────────────────────────────────────────────────────
+// ── Content Editor ───────────────────────────────────────
 
 function ContentEditor({
   content,
@@ -679,7 +677,7 @@ function ContentEditor({
   return null;
 }
 
-// ── Chip List Editor ──────────────────────────────────────────────────
+// ── Chip List Editor ───────────────────────────────────────
 
 function ChipListEditor({
   chips,
@@ -751,7 +749,7 @@ function ChipListEditor({
   );
 }
 
-// ── Style Editor ──────────────────────────────────────────────────────
+// ── Style Editor ───────────────────────────────────────
 
 function StyleEditor({
   style,
@@ -811,7 +809,7 @@ function StyleEditor({
   );
 }
 
-// ── Advanced Tab ──────────────────────────────────────────────────────
+// ── Advanced Tab ───────────────────────────────────────
 
 function AdvancedTab({
   config,
@@ -837,8 +835,7 @@ function AdvancedTab({
   const margins = config.canvas.margins;
 
   return (
-    <div className="anim-fade-in v3-settings-content v3-advanced-content">
-      {/* Canvas */}
+    <div className="anim-fade-in v3-advanced-content">
       <div className="editor-card">
         <h3 className="editor-card-h3">画布</h3>
         <div className="form-row" style={{ gap: 8 }}>
@@ -909,7 +906,6 @@ function AdvancedTab({
         </label>
       </div>
 
-      {/* Defaults */}
       <div className="editor-card">
         <h3 className="editor-card-h3">全局默认样式</h3>
         <div className="form-row" style={{ gap: 8 }}>

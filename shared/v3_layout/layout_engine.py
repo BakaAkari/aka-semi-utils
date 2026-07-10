@@ -2,7 +2,7 @@
 
 此模块不包含任何 PIL/Canvas 依赖，只负责：
   - 输入：WatermarkConfig + image_w/h
-  - 输出：LayoutResult（每个元素在画布上的绝对位置和尺寸）
+  - 输出：LayoutResult（每个水印元素在画布上的绝对位置和尺寸）
 
 前后端共享同一套算法逻辑，通过单元测试保证一致性。
 """
@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-# ── 基础几何 ──────────────────────────────────────────────────────────
+# ── 基础几何 ─────────────────────────────────
 
 @dataclass(frozen=True, slots=True)
 class Rect:
@@ -50,7 +50,7 @@ class Size:
     h: int = 0
 
 
-# ── 配置类型 ──────────────────────────────────────────────────────────
+# ── 配置类型 ─────────────────────────────────
 
 @dataclass(slots=True)
 class MarginsConfig:
@@ -136,7 +136,7 @@ class WatermarkConfig:
     custom_text: str = ""
 
 
-# ── 布局结果 ──────────────────────────────────────────────────────────
+# ── 布局结果 ─────────────────────────────────
 
 @dataclass(slots=True)
 class ComputedElement:
@@ -155,12 +155,29 @@ class LayoutResult:
     elements: list[ComputedElement] = field(default_factory=list)
 
 
-# ── 布局引擎 ──────────────────────────────────────────────────────────
+# ── Layout Diagnostics ─────────────────────────────────
+
+@dataclass(slots=True)
+class DiagnosticItem:
+    id: str
+    type: str
+    severity: Literal["error", "warning"]
+    message: str
+    element_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class LayoutResultWithDiagnostics:
+    layout: LayoutResult
+    diagnostics: list[DiagnosticItem] = field(default_factory=list)
+
+
+# ── 布局引擎 ─────────────────────────────────
 
 def compute_layout(config: WatermarkConfig, image_w: int, image_h: int) -> LayoutResult:
     """主入口：计算每个水印元素在画布上的绝对位置和尺寸。"""
 
-    # ── Step 1: 画布尺寸 ──────────────────────────────────────────────
+    # ── Step 1: 画布尺寸 ─────────────────────────────
     margins = config.canvas.margins
     canvas_w = image_w + margins.left + margins.right
     canvas_h = image_h + margins.top + margins.bottom
@@ -172,7 +189,7 @@ def compute_layout(config: WatermarkConfig, image_w: int, image_h: int) -> Layou
     short_edge = min(image_w, image_h)
     long_edge = max(image_w, image_h)
 
-    # ── Step 2: 遍历区域 ──────────────────────────────────────────────
+    # ── Step 2: 遍历区域 ─────────────────────────────
     for region in config.regions:
         if not region.enabled:
             continue
@@ -187,7 +204,95 @@ def compute_layout(config: WatermarkConfig, image_w: int, image_h: int) -> Layou
     return LayoutResult(canvas=canvas, image_rect=image_rect, elements=elements)
 
 
-# ── 各区域类型计算 ────────────────────────────────────────────────────
+def compute_layout_with_diagnostics(config: WatermarkConfig, image_w: int, image_h: int) -> LayoutResultWithDiagnostics:
+    """带诊断的布局计算。"""
+    layout = compute_layout(config, image_w, image_h)
+    diagnostics = diagnose_layout(layout, config)
+    return LayoutResultWithDiagnostics(layout=layout, diagnostics=diagnostics)
+
+
+def diagnose_layout(layout: LayoutResult, _config: WatermarkConfig) -> list[DiagnosticItem]:
+    """布局诊断：检测重叠、越界、空内容、缺资源。"""
+    diagnostics: list[DiagnosticItem] = []
+    canvas = layout.canvas
+    elements = layout.elements
+
+    # 1. 重叠
+    for i in range(len(elements)):
+        for j in range(i + 1, len(elements)):
+            a = elements[i]
+            b = elements[j]
+            if _rects_overlap(a.rect, b.rect):
+                diagnostics.append(DiagnosticItem(
+                    id=f"overlap-{a.id}-{b.id}",
+                    type="overlap",
+                    severity="error",
+                    message=f"{a.id} 与 {b.id} 重叠",
+                    element_ids=[a.id, b.id],
+                ))
+
+    # 2. 越界
+    for el in elements:
+        if (
+            el.rect.x < 0
+            or el.rect.y < 0
+            or el.rect.right > canvas.w
+            or el.rect.bottom > canvas.h
+        ):
+            diagnostics.append(DiagnosticItem(
+                id=f"oob-{el.id}",
+                type="out-of-bounds",
+                severity="error",
+                message=f"{el.id} 越出画布",
+                element_ids=[el.id],
+            ))
+
+    # 3. 空内容 / 缺资源
+    for el in elements:
+        if el.type == "text":
+            if isinstance(el.content, TextContent):
+                non_empty = any(c.field_id != "empty" for c in el.content.chips)
+                if not non_empty:
+                    diagnostics.append(DiagnosticItem(
+                        id=f"empty-{el.id}",
+                        type="empty-enabled-slot",
+                        severity="warning",
+                        message=f"{el.id} 已启用但没有字段",
+                        element_ids=[el.id],
+                    ))
+        elif el.type == "signature" and isinstance(el.content, SignatureContent) and el.content.path == "":
+            diagnostics.append(DiagnosticItem(
+                id=f"missing-sig-{el.id}",
+                type="missing-resource",
+                severity="warning",
+                message=f"{el.id} 未上传签名",
+                element_ids=[el.id],
+            ))
+
+    # 4. 字号过大
+    for el in elements:
+        if el.type == "text" and el.style.font_size is not None and el.style.font_size > el.rect.h:
+            diagnostics.append(DiagnosticItem(
+                id=f"font-large-{el.id}",
+                type="font-too-large",
+                severity="warning",
+                message=f"{el.id} 字号超过 slot 高度",
+                element_ids=[el.id],
+            ))
+
+    return diagnostics
+
+
+def _rects_overlap(a: Rect, b: Rect) -> bool:
+    return not (
+        a.right <= b.x
+        or a.x >= b.right
+        or a.bottom <= b.y
+        or a.y >= b.bottom
+    )
+
+
+# ── 各区域类型计算 ─────────────────────────────────
 
 def _compute_footer_bar(
     region: RegionConfig,
@@ -199,7 +304,6 @@ def _compute_footer_bar(
 ) -> list[ComputedElement]:
     """底部水印条：7 个槽位（left-logo, left-top, left-bottom, center, right-top, right-bottom, right-logo）。"""
 
-    # footer-bar 区域 bounds = 画布底部
     region_bounds = Rect(
         x=0,
         y=image_rect.bottom,
@@ -208,15 +312,6 @@ def _compute_footer_bar(
     )
 
     elements: list[ComputedElement] = []
-
-    # 槽位水平分布：
-    # 左半区：left-logo | left-top/left-bottom（垂直堆叠）
-    # 中区：center
-    # 右半区：right-top/right-bottom（垂直堆叠） | right-logo
-    # 先计算可用的文本区宽度（去掉左右 logo 占位）
-
-    # 简化：footer-bar 的每个 slot 有自己的预设位置
-    # 每个 slot 的宽度和位置基于 region 的宽度和 margin
     slot_layouts = _compute_footer_slots(region_bounds, region.slots)
 
     for slot_id, slot_bounds in slot_layouts.items():
@@ -227,10 +322,7 @@ def _compute_footer_bar(
         style = _merge_style(defaults, slot.style)
         font_size = _resolve_font_size(style, slot_bounds.h, short_edge, long_edge)
 
-        # 文本元素
         if isinstance(slot.content, TextContent) and slot.content.chips:
-            # 计算文本内容尺寸（简化：假设已测量，实际由渲染层处理）
-            # 这里只负责定位
             anchor = _footer_slot_anchor(slot_id)
             pos = _apply_anchor(slot_bounds, anchor)
 
@@ -243,14 +335,13 @@ def _compute_footer_bar(
                 style=_with_font_size(style, font_size),
             ))
 
-        # Logo 元素
         elif isinstance(slot.content, LogoContent):
             logo_h = _resolve_logo_size(slot.content, short_edge)
             pos = _apply_anchor(slot_bounds, "middle-center")
             elements.append(ComputedElement(
                 id=f"{region.id}-{slot_id}",
                 type="logo",
-                rect=Rect(x=pos.x, y=pos.y, w=logo_h * 3, h=logo_h),  # 宽高比占位
+                rect=Rect(x=pos.x, y=pos.y, w=logo_h * 3, h=logo_h),
                 anchor="middle-center",
                 content=slot.content,
                 style=defaults,
@@ -268,7 +359,6 @@ def _compute_side_edge(
 ) -> list[ComputedElement]:
     """图片主体垂直边缘：单行文本垂直堆叠。"""
 
-    # 区域宽度
     if region.width:
         if region.width.get("mode") == "pixel":
             region_w = int(region.width["value"])
@@ -277,7 +367,6 @@ def _compute_side_edge(
     else:
         region_w = max(40, round(short_edge * 0.12))
 
-    # 区域位置
     if region.edge == "left":
         region_bounds = Rect(
             x=image_rect.x,
@@ -295,7 +384,6 @@ def _compute_side_edge(
 
     elements: list[ComputedElement] = []
 
-    # 计算每个文本行
     if region.slots:
         for slot_id, slot in region.slots.items():
             if not slot.enabled or slot.content is None:
@@ -305,17 +393,13 @@ def _compute_side_edge(
             font_size = _resolve_font_size(style, region_bounds.h, short_edge, long_edge)
 
             if isinstance(slot.content, TextContent) and slot.content.chips:
-                # side-edge 内单行垂直堆叠
-                # 每行占 font_size * line_height
                 line_h = round(font_size * style.line_height)
-                # 在区域内垂直居中
-                n_lines = 1  # 简化：每个 slot 一行
+                n_lines = 1
                 total_h = n_lines * line_h
                 start_y = region_bounds.y + (region_bounds.h - total_h) // 2
 
-                # 水平对齐
                 if region.alignment == "start":
-                    x = region_bounds.x + 8  # 8px padding
+                    x = region_bounds.x + 8
                     anchor = "middle-left"
                 elif region.alignment == "end":
                     x = region_bounds.right - 8
@@ -347,17 +431,14 @@ def _compute_free(
 
     elements: list[ComputedElement] = []
 
-    # 锚点计算
     anchor = region.anchor or "middle-center"
     anchor_x = image_rect.x + image_rect.w * _anchor_col(anchor)
     anchor_y = image_rect.y + image_rect.h * _anchor_row(anchor)
 
-    # 偏移
     offset_unit = short_edge if region.offset_unit == "short_edge_ratio" else 1
     final_x = anchor_x + round(region.offset_x * offset_unit)
     final_y = anchor_y + round(region.offset_y * offset_unit)
 
-    # 遍历 slots
     for slot_id, slot in region.slots.items():
         if not slot.enabled or slot.content is None:
             continue
@@ -378,7 +459,7 @@ def _compute_free(
     return elements
 
 
-# ── 辅助函数 ──────────────────────────────────────────────────────────
+# ── 辅助函数 ─────────────────────────────────
 
 def _resolve_font_size(
     style: StyleConfig,
@@ -510,7 +591,6 @@ def _compute_footer_slots(region_bounds: Rect, slots: dict[str, SlotConfig]) -> 
     logo_w = max(40, int(total_w * 0.15))
     text_w = (total_w - logo_w * 2) // 2
 
-    # 左 logo
     results["left-logo"] = Rect(
         x=region_bounds.x,
         y=region_bounds.y,
@@ -518,7 +598,6 @@ def _compute_footer_slots(region_bounds: Rect, slots: dict[str, SlotConfig]) -> 
         h=region_bounds.h,
     )
 
-    # 左文本区（上下两行）
     left_text_x = region_bounds.x + logo_w
     results["left-top"] = Rect(
         x=left_text_x,
@@ -533,7 +612,6 @@ def _compute_footer_slots(region_bounds: Rect, slots: dict[str, SlotConfig]) -> 
         h=region_bounds.h // 2,
     )
 
-    # 中区
     results["center"] = Rect(
         x=left_text_x + text_w,
         y=region_bounds.y,
@@ -541,7 +619,6 @@ def _compute_footer_slots(region_bounds: Rect, slots: dict[str, SlotConfig]) -> 
         h=region_bounds.h,
     )
 
-    # 右文本区
     right_text_x = left_text_x + text_w
     results["right-top"] = Rect(
         x=right_text_x,
@@ -556,7 +633,6 @@ def _compute_footer_slots(region_bounds: Rect, slots: dict[str, SlotConfig]) -> 
         h=region_bounds.h // 2,
     )
 
-    # 右 logo
     results["right-logo"] = Rect(
         x=region_bounds.right - logo_w,
         y=region_bounds.y,
