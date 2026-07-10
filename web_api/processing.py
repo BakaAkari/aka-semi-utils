@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
+from typing import Any
 
 from PIL import Image, ImageOps
 from PIL.Image import DecompressionBombWarning
@@ -13,6 +14,7 @@ from core.template_builder import render_processors
 from core.util import get_exif
 from processor.core import start_process
 from shared.processor_assembler import config_to_processors
+from shared.v3_assembler import v3_config_to_processors
 from shared.watermark_schema import WatermarkConfig
 from web_api.errors import ApiError
 from web_api.settings import WebApiSettings
@@ -27,7 +29,7 @@ def process_image(
     *,
     preview: bool = False,
 ) -> Path:
-    """Run the shared processor pipeline for one uploaded image."""
+    """Run the shared processor pipeline for one uploaded image (V2)."""
 
     if config.logo.custom_path:
         config.logo.custom_path = str(resolve_resource(config.logo.custom_path, "logo", settings))
@@ -72,6 +74,71 @@ def process_image(
         import traceback
         _logger = logging.getLogger("web_api.processing")
         _logger.error("Image processing failed:\n%s", traceback.format_exc())
+        output_path.unlink(missing_ok=True)
+        raise ApiError(
+            code="processing_failed",
+            message="图片处理失败",
+            status_code=500,
+        ) from exc
+
+    if not output_path.exists():
+        raise ApiError(
+            code="output_missing",
+            message="处理完成但未生成输出文件",
+            status_code=500,
+        )
+    return output_path
+
+
+def process_image_v3(
+    input_path: Path,
+    output_path: Path,
+    config_dict: dict[str, Any],
+    settings: WebApiSettings,
+    *,
+    preview: bool = False,
+) -> Path:
+    """Run the V3 watermark processor pipeline for one uploaded image."""
+
+    if preview:
+        _validate_image(input_path, settings, max_pixels=settings.preview_max_image_pixels, mode="preview")
+    else:
+        _validate_image(input_path, settings, max_pixels=settings.max_image_pixels, mode="process")
+
+    processors_template = v3_config_to_processors(config_dict)
+    if not processors_template:
+        raise ApiError(
+            code="empty_pipeline",
+            message="当前 V3 配置没有生成可执行的水印处理管线",
+            status_code=400,
+        )
+
+    try:
+        exif = get_exif(str(input_path))
+        processors = render_processors(processors_template, exif, str(input_path))
+        if preview:
+            image = _load_preview_image(input_path, settings)
+            start_process(
+                data=processors,
+                input_path=str(input_path),
+                output_path=str(output_path),
+                initial_buffer=[image],
+                pre_loaded_exif=exif,
+            )
+        else:
+            start_process(
+                data=processors,
+                input_path=str(input_path),
+                output_path=str(output_path),
+                pre_loaded_exif=exif,
+            )
+    except ApiError:
+        raise
+    except Exception as exc:
+        import logging
+        import traceback
+        _logger = logging.getLogger("web_api.processing")
+        _logger.error("V3 image processing failed:\n%s", traceback.format_exc())
         output_path.unlink(missing_ok=True)
         raise ApiError(
             code="processing_failed",

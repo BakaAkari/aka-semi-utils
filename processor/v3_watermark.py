@@ -15,7 +15,8 @@ from __future__ import annotations
 from jinja2 import Template
 from PIL import Image
 
-from processor.core import FilterProcessor, PipelineContext, register
+from processor.core import PipelineContext, register
+from processor.filters import FilterProcessor
 from processor.generators import RichTextGenerator, TextSegment
 from shared.field_registry import get_default_registry
 from shared.v3_layout.layout_engine import (
@@ -304,4 +305,5 @@ def _dict_to_watermark_config(data: dict) -> WatermarkConfig:
         ),
         regions=[_region(r) for r in data.get("regions", [])],
         defaults=_style(data.get("defaults")) or StyleConfig(),
+        custom_text=data.get("custom_text", ""),
     )

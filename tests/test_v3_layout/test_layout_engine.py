@@ -1,10 +1,8 @@
 """V3 Layout Engine 单元测试。"""
 
-import pytest
 
 from shared.v3_layout.layout_engine import (
     CanvasConfig,
-    ComputedElement,
     MarginsConfig,
     Rect,
     RegionConfig,
@@ -210,10 +208,6 @@ class TestSideEdge:
         el = result.elements[0]
         # 短边 = 1080, ratio = 0.12 → round(130) 区域宽度，减去 16px padding
         assert el.rect.w == 130 - 16
-
-    def test_side_edge_same_width_both_orientations(self):
-        assert el.rect.w == 130 - 16
-        assert el.rect.w == 129 - 16
 
     def test_side_edge_same_width_both_orientations(self):
         """16:9 和 9:16 使用 short_edge_ratio 时区域宽度相同。"""

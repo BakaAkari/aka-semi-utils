@@ -21,8 +21,9 @@ from starlette.concurrency import run_in_threadpool
 
 from web_api import stats
 from web_api.errors import ApiError
-from web_api.processing import process_image
+from web_api.processing import process_image, process_image_v3
 from web_api.schemas import config_from_payload, success_response
+from web_api.schemas_v3 import is_v3_payload, validate_v3_payload
 from web_api.settings import settings
 from web_api.storage import (
     cleanup_expired_files,
@@ -228,11 +229,12 @@ async def _run_single_image(
         input_path = resolve_upload(image_id, settings)
     else:
         raise ApiError(code="missing_image", message="请先上传图片", status_code=400)
+
     config_payload = _parse_config_json(config_json)
-    watermark_config = config_from_payload(config_payload)
     output_path = new_output_path(
         input_path, settings, prefix="preview" if preview else "process",
     )
+
     try:
         await asyncio.wait_for(_job_slots.acquire(), timeout=30.0)
     except TimeoutError as exc:
@@ -241,16 +243,33 @@ async def _run_single_image(
             message="服务器正在处理其他图片，请稍后重试",
             status_code=429,
         ) from exc
+
     try:
         t0 = time.perf_counter()
-        result_path = await run_in_threadpool(
-            process_image,
-            input_path,
-            output_path,
-            watermark_config,
-            settings,
-            preview=preview,
-        )
+
+        # ── V3 path ──────────────────────────────────────────────────────
+        if is_v3_payload(config_payload):
+            v3_config = validate_v3_payload(config_payload)
+            result_path = await run_in_threadpool(
+                process_image_v3,
+                input_path,
+                output_path,
+                v3_config,
+                settings,
+                preview=preview,
+            )
+        # ── V2 path ──────────────────────────────────────────────────────
+        else:
+            watermark_config = config_from_payload(config_payload)
+            result_path = await run_in_threadpool(
+                process_image,
+                input_path,
+                output_path,
+                watermark_config,
+                settings,
+                preview=preview,
+            )
+
         latency_ms = int((time.perf_counter() - t0) * 1000)
     finally:
         _job_slots.release()

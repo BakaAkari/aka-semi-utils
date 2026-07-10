@@ -9,10 +9,8 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from typing import Literal
-
 
 # ── 基础几何 ──────────────────────────────────────────────────────────
 
@@ -135,6 +133,7 @@ class WatermarkConfig:
     canvas: CanvasConfig = field(default_factory=CanvasConfig)
     regions: list[RegionConfig] = field(default_factory=list)
     defaults: StyleConfig = field(default_factory=StyleConfig)
+    custom_text: str = ""
 
 
 # ── 布局结果 ──────────────────────────────────────────────────────────
