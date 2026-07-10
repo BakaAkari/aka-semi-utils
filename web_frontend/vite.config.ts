@@ -10,8 +10,8 @@ export default defineConfig(({ mode }) => {
     base: `${apiBase}/`,
     server: {
       proxy: {
-        [`${apiBase}/api`]: 'http://127.0.0.1:2189'
-      }
-    }
+        '/api': 'http://127.0.0.1:2189',
+      },
+    },
   };
 });
