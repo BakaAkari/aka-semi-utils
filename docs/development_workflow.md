@@ -1,181 +1,107 @@
 # Development Workflow / 协作开发流程
 
-本文件固化 `aka-semi-utils / 极简水印` 的需求、文档、实现、测试、版本和发布协作方式。后续涉及新功能、大改动、体验重构或发布时，应优先遵循本流程。
+本文件固化 V3 水印工具的需求、设计、实现、验证、部署和提交流程。
 
 ## 核心流程
 
 ```text
-需求/方向 → roadmap/设计文档 → 用户确认 → 代码实现 → 自动验证 → 用户手动测试 → bug 迭代 → 文档/版本同步 → commit/tag/release
+需求/方向 → 查阅当前文档 → 更新 roadmap/设计文档 → 用户确认 → 小步实现 → 自动验证 → 线上验证 → 用户手动测试 → 文档同步 → commit/push
 ```
 
 ## 角色分工
 
 ### 用户负责
 
-- 提供真实需求、使用场景、优先级和体验方向。
+- 提供真实需求、使用场景、优先级和审美方向。
 - 审阅并确认 roadmap、阶段设计和验收标准。
-- 对 GUI 功能进行真实操作测试。
+- 对线上 GUI 做真实图片测试。
 - 反馈 bug、体验问题和期望调整。
 
 ### Agent 负责
 
-- 将需求整理为 roadmap、阶段设计文档、任务拆分和验收标准。
-- 在文档对齐前，不直接进行大规模代码实现。
-- 根据确认后的文档进行代码修改、测试和修复。
-- 维护版本号、README、Agent 规则、Release notes 等可追溯信息。
-- 提交前检查工作区状态、diff、测试结果和隐私路径。
+- 先检查当前 repo 状态和相关文档。
+- 将需求整理为目标、范围、非目标、风险、验收标准。
+- 在文档对齐前，不做大范围 GUI/架构改动。
+- 小步修改代码并运行真实验证。
+- 部署后检查页面、API、服务、路由和截图。
+- 提交前检查 diff、测试结果、隐私路径和旧版本残留。
 
-## 工作模式
+## 变更类型与要求
 
-### 1. 需求整理阶段
+### 文档-only
 
-适用于：
+- 可不跑完整测试。
+- 必须检查文档引用、过期路径和当前架构一致性。
 
-- 新功能。
-- 大范围 GUI 改造。
-- 配置结构调整。
-- 处理管线变化。
-- Release 流程变化。
+### 前端 UI
 
-Agent 应执行：
-
-1. 阅读现有 roadmap 和相关阶段文档。
-2. 将用户需求整理为：
-   - 背景与目标。
-   - 用户场景。
-   - 功能范围。
-   - 非目标范围。
-   - 涉及模块。
-   - 风险与兼容性。
-   - 验收标准。
-3. 更新 `docs/roadmap.md` 或新增/更新阶段设计文档。
-4. 等用户确认后再进入实现。
-
-### 2. 实现阶段
-
-实现前应检查：
+至少运行：
 
 ```bash
-git status --short
+cd web_frontend && VITE_API_BASE=/tools/watermark-v3 npm run build
 ```
 
-实现原则：
+部署后用浏览器截图检查。
 
-- 优先小补丁，避免无关重构。
-- 保持 `AppState` 是 GUI 配置状态单一来源。
-- 修改处理管线时，同时考虑预览、批处理和错误汇总入口。
-- 修改配置结构时，必须考虑老配置迁移。
-- 不把开发者本机路径写入 `config/user.release.json`。
+### 后端 / 配置 / 处理管线
 
-### 3. 自动验证阶段
-
-常用命令：
+至少运行：
 
 ```bash
 uv run ruff check .
-uv run mypy .
 uv run pytest
 ```
 
-按变更范围选择：
+### 部署
 
-- 文档-only：可不跑完整测试，但需要检查链接和版本一致性。
-- GUI/模型/配置：至少跑相关单测；关键阶段跑全量测试。
-- 处理管线：跑相关单测与集成测试。
-- Release/打包：跑全量测试，并按需本地 PyInstaller 验证。
+必须验证：
 
-### 4. 用户手动测试阶段
+```bash
+curl -sS https://baka-akari.zone/tools/watermark-v3/api/health
+curl -sS -o /dev/null -w '%{http_code}\n' https://baka-akari.zone/tools/watermark-v3/
+```
 
-GUI 项目必须保留用户手动测试环节。Agent 自动测试不能替代真实体验测试。
+并检查旧入口：
 
-建议用户测试：
+```bash
+curl -sS -o /dev/null -w 'v1_api:%{http_code}\n' https://baka-akari.zone/tools/watermark/api/health
+curl -sS -o /dev/null -w 'v2:%{http_code}\n' https://baka-akari.zone/tools/watermark-v2/
+curl -sS -o /dev/null -w 'v3_v2:%{http_code}\n' https://baka-akari.zone/tools/watermark-v3/v2
+```
 
-- 首次打开应用。
-- 导入一组真实照片。
-- 调整四角字段、字体、颜色、Logo、签名和高级参数。
-- 查看实时预览。
-- 关闭重启，确认配置恢复。
-- 执行批处理，检查输出图和失败详情。
-- 使用 Release 包进行冒烟测试。
+期望：V1 API `410`，V2 `404`，V3 `/v2` `404`。
 
-### 5. Bug 迭代阶段
+## 实现原则
 
-每个 bug 尽量记录：
+- V3 只接受 Region / Slot / Content 配置。
+- 不恢复 V1/V2 四角配置模型。
+- 不把用户文本送入 Jinja 或动态模板执行器。
+- 上传资源只能用服务端不透明 ID。
+- 普通用户 UI 走模板驱动，高级结构编辑默认收起。
+- 大范围控制面改造前先更新 `design/v3-control-surface-guardrails.md`。
 
-- 复现步骤。
-- 预期行为。
-- 实际行为。
-- 影响范围。
-- 修复方案。
-- 验证方式。
+## 提交前检查
 
-重要 bug 修复应同步更新相关验收标准或测试。
-
-### 6. 版本与提交阶段
-
-大功能或阶段性提交应满足：
-
-- roadmap/阶段文档已同步。
-- README 按需更新。
-- 版本号策略已确认。
-- 自动验证完成。
-- 用户测试反馈已处理或记录为后续 backlog。
+```bash
+git status --short
+git diff --stat
+git diff --check
+```
 
 提交信息使用 Conventional Commits：
 
 ```text
-feat: add template preset management
-fix: restore signature config persistence
-docs: add development workflow
-chore: bump version to 2.2.0
+feat: add layout guardrails
+fix: prevent v3 resource path injection
+docs: refresh v3 roadmap
+chore: remove legacy watermark files
 ```
 
-## 文档组织规则
+## 文档组织
 
-- `README.md`：面向用户和新开发者的项目入口。
-- `docs/roadmap.md`：长期路线和阶段拆分。
-- `docs/development_workflow.md`：协作开发流程。
-- `docs/versioning.md`：版本策略和追溯规则。
-- `docs/changelog.md`：开发过程变更记录，Release notes 的输入来源之一。
-- `docs/phase*_design.md`：阶段或专项设计文档。
-- `AGENTS.md`：仓库级 LLM/Agent 规则入口。
-- `.agents/skills/aka-semi-utils-dev/SKILL.md`：项目专用 Agent Skill。
-
-## 大功能启动模板
-
-新增大功能前，建议在阶段文档中包含：
-
-```markdown
-# Phase N：功能名称
-
-## 背景
-
-## 目标
-
-## 非目标
-
-## 用户场景
-
-## 设计方案
-
-## 涉及文件
-
-## 数据/配置兼容性
-
-## 实施步骤
-
-## 验收标准
-
-## 风险与回滚
-```
-
-## 完成定义
-
-一次功能迭代完成时，应能回答：
-
-- 这次改动解决了什么问题？
-- 对应文档在哪里？
-- 版本或 changelog 是否更新？
-- 自动测试结果如何？
-- 用户手动测试结果如何？
-- commit/tag/release 是否可追溯？
+- `README.md`：当前项目入口。
+- `docs/roadmap.md`：当前路线图。
+- `design/v3-region-based-layout.md`：当前 V3 架构说明。
+- `design/v3-control-surface-guardrails.md`：下一阶段控制面设计。
+- `deploy/README.md`：线上部署和验证。
+- `docs/archive/`：历史设计，仅作背景，不作为当前待办。
