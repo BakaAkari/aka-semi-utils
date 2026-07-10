@@ -7,7 +7,35 @@
  * - 支持 size_reference 控制字号基准
  */
 
-import type { FieldId } from './watermarkConfig';
+export type FieldId =
+  | 'camera_model'
+  | 'lens_model'
+  | 'focal_length'
+  | 'aperture'
+  | 'shutter'
+  | 'iso'
+  | 'datetime'
+  | 'make'
+  | 'artist'
+  | 'gps'
+  | 'custom_text'
+  | 'empty';
+
+/** Placeholder values for Canvas skeleton preview when no image EXIF is available. */
+export const PLACEHOLDER_EXIF: Record<FieldId, string> = {
+  camera_model: 'GFX100S II',
+  lens_model: 'GF80mmF1.7 R WR',
+  focal_length: '80mm',
+  aperture: 'F1.7',
+  shutter: '1/250s',
+  iso: 'ISO400',
+  datetime: '2026.07.10',
+  make: 'FUJIFILM',
+  artist: 'Baka Akari',
+  gps: 'Shanghai',
+  custom_text: 'AKARI PHOTO',
+  empty: '',
+};
 
 export type FieldChip = {
   field_id: FieldId;
@@ -33,13 +61,18 @@ export interface SignatureContent {
 export type Content = TextContent | LogoContent | SignatureContent;
 
 export type SizeReference = 'region_height' | 'short_edge' | 'long_edge';
+export type Anchor =
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'middle-left' | 'middle-center' | 'middle-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right';
+export type FontFamily = 'NotoSansCJKsc-Regular.otf' | 'NotoSansCJKsc-Bold.otf';
 
 export interface StyleConfig {
   font_size: number | null;
   font_size_ratio: number | null;
   size_reference: SizeReference;
   color: string;
-  font_family: string;
+  font_family: FontFamily;
   bold: boolean;
   line_height: number;
 }
@@ -60,7 +93,7 @@ export interface RegionConfig {
   edge?: 'left' | 'right';
   width?: { mode: 'pixel' | 'short_edge_ratio'; value: number };
   alignment?: 'start' | 'center' | 'end';
-  anchor?: string;
+  anchor?: Anchor;
   offset_x?: number;
   offset_y?: number;
   offset_unit?: 'pixel' | 'short_edge_ratio';
@@ -114,7 +147,7 @@ export const defaultStyle: StyleConfig = {
 
 export const presetDefaultV3: WatermarkConfigV3 = {
   canvas: {
-    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    margins: { top: 0, right: 0, bottom: 80, left: 0 },
     background: '#FFFFFF',
     border_radius: 0,
   },
@@ -162,7 +195,7 @@ export const presetDefaultV3: WatermarkConfigV3 = {
 
 export const presetMinimalV3: WatermarkConfigV3 = {
   canvas: {
-    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    margins: { top: 0, right: 0, bottom: 90, left: 0 },
     background: '#FFFFFF',
     border_radius: 0,
   },
@@ -199,7 +232,7 @@ export const presetMinimalV3: WatermarkConfigV3 = {
 
 export const presetSoftCardV3: WatermarkConfigV3 = {
   canvas: {
-    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    margins: { top: 0, right: 0, bottom: 150, left: 0 },
     background: '#FFFFFF',
     border_radius: 24,
   },
@@ -260,7 +293,7 @@ export const presetSoftCardV3: WatermarkConfigV3 = {
 
 export const presetSidesV3: WatermarkConfigV3 = {
   canvas: {
-    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    margins: { top: 0, right: 0, bottom: 80, left: 0 },
     background: '#FFFFFF',
     border_radius: 0,
   },

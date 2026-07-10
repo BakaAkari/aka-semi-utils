@@ -12,11 +12,12 @@ import pytest
 from PIL import Image
 
 from shared.v3_assembler import v3_config_to_processors
+from web_api.errors import ApiError
 from web_api.schemas_v3 import validate_v3_payload
 
 SAMPLE_V3_CONFIG = {
     "canvas": {
-        "margins": {"top": 0, "right": 0, "bottom": 0, "left": 0},
+        "margins": {"top": 0, "right": 0, "bottom": 80, "left": 0},
         "background": "#FFFFFF",
         "border_radius": 0,
     },
@@ -112,6 +113,74 @@ class TestV3PayloadValidation:
             validate_v3_payload(bad)
         assert "less than or equal" in (exc.value.detail or "").lower() or "不合法" in (exc.value.detail or "")
 
+    @pytest.mark.parametrize(
+        ("patch_path", "value"),
+        [
+            (("defaults", "font_family"), "/etc/passwd"),
+            (("regions", 0, "anchor"), "not-an-anchor"),
+            (("regions", 0, "slots", "right-logo", "content", "path"), "/etc/passwd"),
+        ],
+    )
+    def test_server_paths_and_unknown_anchors_rejected(self, patch_path, value):
+        from copy import deepcopy
+
+        bad = deepcopy(SAMPLE_V3_CONFIG)
+        target = bad
+        for part in patch_path[:-1]:
+            target = target[part]
+        target[patch_path[-1]] = value
+
+        with pytest.raises(ApiError):
+            validate_v3_payload(bad)
+
+    def test_pixel_width_uses_pixel_range(self):
+        from copy import deepcopy
+
+        config = deepcopy(SAMPLE_V3_CONFIG)
+        config["regions"] = [{
+            "id": "side-left",
+            "type": "side-edge",
+            "enabled": True,
+            "edge": "left",
+            "width": {"mode": "pixel", "value": 240.0},
+            "slots": {},
+        }]
+
+        parsed = validate_v3_payload(config)
+        assert parsed["regions"][0]["width"] == {"mode": "pixel", "value": 240.0}
+
+    def test_ratio_width_above_one_rejected(self):
+        from copy import deepcopy
+
+        config = deepcopy(SAMPLE_V3_CONFIG)
+        config["regions"] = [{
+            "id": "side-left",
+            "type": "side-edge",
+            "enabled": True,
+            "edge": "left",
+            "width": {"mode": "short_edge_ratio", "value": 1.1},
+            "slots": {},
+        }]
+
+        with pytest.raises(ApiError):
+            validate_v3_payload(config)
+
+    def test_non_finite_offset_rejected(self):
+        from copy import deepcopy
+
+        config = deepcopy(SAMPLE_V3_CONFIG)
+        config["regions"] = [{
+            "id": "free-1",
+            "type": "free",
+            "enabled": True,
+            "anchor": "bottom-right",
+            "offset_x": float("nan"),
+            "slots": {},
+        }]
+
+        with pytest.raises(ApiError):
+            validate_v3_payload(config)
+
 
 class TestV3Assembler:
     """Test v3_config_to_processors produces correct pipeline JSON."""
@@ -131,6 +200,34 @@ class TestV3Assembler:
         assert v3_config["regions"][0]["slots"]["left-top"]["enabled"] is True
 
 
+class TestV3ResourceResolution:
+    def test_opaque_logo_id_is_resolved_without_mutating_public_config(self, tmp_path: Path):
+        from copy import deepcopy
+
+        from web_api.processing import _resolve_v3_resources
+        from web_api.settings import WebApiSettings
+
+        resource_id = f"{'a' * 20}.png"
+        logo_dir = tmp_path / "resources" / "logo"
+        logo_dir.mkdir(parents=True)
+        Image.new("RGBA", (8, 8)).save(logo_dir / resource_id)
+        settings = WebApiSettings(
+            data_dir=tmp_path,
+            upload_dir=tmp_path / "uploads",
+            output_dir=tmp_path / "outputs",
+            resources_dir=tmp_path / "resources",
+            tmp_dir=tmp_path / "tmp",
+        )
+        config = deepcopy(SAMPLE_V3_CONFIG)
+        config["regions"][0]["slots"]["right-logo"]["content"]["path"] = resource_id
+        validated = validate_v3_payload(config)
+
+        resolved = _resolve_v3_resources(validated, settings)
+
+        assert resolved["regions"][0]["slots"]["right-logo"]["content"]["path"] == str(logo_dir / resource_id)
+        assert validated["regions"][0]["slots"]["right-logo"]["content"]["path"] == resource_id
+
+
 class TestV3EndToEndProcessing:
     """Test the full V3 pipeline with a real image."""
 
@@ -142,14 +239,12 @@ class TestV3EndToEndProcessing:
         return path
 
     def test_v3_watermark_filter_runs(self, sample_image: Path, tmp_path: Path):
-        """End-to-end: v3_watermark processor runs and produces output."""
-        import processor  # registers processors
-        import processor.v3_watermark  # noqa: F401  # registers v3_watermark
-        from core.template_builder import render_processors
-        from processor.core import start_process
+        """Production registration runs V3 directly without generic Jinja rendering."""
+        import processor  # noqa: F401  # registers production processors
+        from processor.core import get_all_processors, start_process
 
-        processors_template = v3_config_to_processors(SAMPLE_V3_CONFIG)
-        processors = render_processors(processors_template, {}, str(sample_image))
+        assert "v3_watermark" in get_all_processors()
+        processors = v3_config_to_processors(SAMPLE_V3_CONFIG)
 
         output_path = tmp_path / "output.jpg"
         start_process(
@@ -161,6 +256,17 @@ class TestV3EndToEndProcessing:
         assert output_path.exists()
         with Image.open(output_path) as img:
             assert img.width > 0 and img.height > 0
+
+    def test_v3_custom_text_stays_literal(self):
+        from processor.v3_watermark import _build_text
+        from shared.v3_layout.layout_engine import FieldChip, TextContent
+
+        content = TextContent(
+            chips=[FieldChip(field_id="custom_text", custom_text="probe={{ 7 * 7 }}")],
+            separator=" ",
+        )
+
+        assert _build_text(content, "", {}, "image.jpg") == "probe={{ 7 * 7 }}"
 
     def test_v3_layout_result_matches_expected_structure(self):
         """Verify layout engine produces expected canvas structure for 16:9."""

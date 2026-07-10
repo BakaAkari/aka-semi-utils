@@ -16,6 +16,7 @@ def _auto_register_processors():
         'processor.filters',
         'processor.generators',
         'processor.mergers',
+        'processor.v3_watermark',
     ]
 
     for module_name in modules_to_scan:

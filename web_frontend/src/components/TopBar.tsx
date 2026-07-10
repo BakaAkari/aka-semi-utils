@@ -1,24 +1,35 @@
-import { useCallback, useContext } from 'react';
-import { AppContext } from '../HomePage';
+import type { V3AppContextType } from '../V3HomePage';
 
-export function TopBar() {
-  const ctx = useContext(AppContext);
-  if (!ctx) return null;
+export type TopBarController = Pick<
+  V3AppContextType,
+  | 'files'
+  | 'status'
+  | 'message'
+  | 'result'
+  | 'batchResults'
+  | 'progress'
+  | 'runProcess'
+  | 'runProcessAll'
+  | 'clearBatchResults'
+  | 'loadPreview'
+>;
+
+export function TopBar({ controller: ctx }: { controller: TopBarController }) {
 
   const { files, status, message, result, batchResults, progress, runProcess, runProcessAll, clearBatchResults, loadPreview } = ctx;
   const hasFiles = files.length > 0;
   const isRunning = status === 'running';
   const isMulti = files.length > 1;
 
-  const handleProcess = useCallback(() => {
+  const handleProcess = () => {
     if (isMulti) {
       void runProcessAll();
     } else {
       void runProcess();
     }
-  }, [isMulti, runProcess, runProcessAll]);
+  };
 
-  const downloadBatch = useCallback(() => {
+  const downloadBatch = () => {
     batchResults.forEach((file, i) => {
       const a = document.createElement('a');
       a.href = file.download_url;
@@ -30,7 +41,7 @@ export function TopBar() {
         document.body.removeChild(a);
       }, i * 300);
     });
-  }, [batchResults]);
+  };
 
   return (
     <header className="topbar">

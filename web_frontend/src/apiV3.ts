@@ -26,7 +26,7 @@ async function ensureUploaded(file: File, signal?: AbortSignal): Promise<{ image
   const request = (async () => {
     const form = new FormData();
     form.append('file', file);
-    const response = await fetch(`/api/uploads`, { method: 'POST', body: form, signal });
+    const response = await fetch(`${API_BASE}/api/uploads`, { method: 'POST', body: form, signal });
     const payload = (await response.json()) as UploadResponse | ApiErrorResponse;
     if (!response.ok || !payload.ok) {
       throw new Error((payload as ApiErrorResponse).error?.message || `上传失败：${response.status}`);
@@ -56,7 +56,7 @@ export async function processImageV3(
   form.append('config', JSON.stringify(config));
   form.append('original_filename', original_filename);
 
-  const response = await fetch(`/api/${endpoint}`, { method: 'POST', body: form, signal });
+  const response = await fetch(`${API_BASE}/api/${endpoint}`, { method: 'POST', body: form, signal });
   const payload = (await response.json()) as ProcessResponse | ApiErrorResponse;
   if (!response.ok || !payload.ok) {
     throw new Error((payload as ApiErrorResponse).error?.message || `请求失败：${response.status}`);
@@ -71,7 +71,7 @@ export async function uploadResourceV3(
   const form = new FormData();
   form.append('file', file);
   form.append('kind', kind);
-  const response = await fetch(`/api/upload-resource`, { method: 'POST', body: form });
+  const response = await fetch(`${API_BASE}/api/upload-resource`, { method: 'POST', body: form });
   const payload = (await response.json()) as ResourceUploadResponse | ApiErrorResponse;
   if (!response.ok || !payload.ok) {
     throw new Error((payload as ApiErrorResponse).error?.message || `上传失败：${response.status}`);

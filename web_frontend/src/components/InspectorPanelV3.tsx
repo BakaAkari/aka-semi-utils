@@ -7,7 +7,8 @@
  * - 声明式配置，与渲染解耦
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { uploadResourceV3 } from '../apiV3';
 import type {
   WatermarkConfigV3,
   RegionConfig,
@@ -19,25 +20,12 @@ import type {
   StyleConfig,
   FieldChip,
   RegionType,
+  FieldId,
 } from '../v3Types';
 import {
   fieldOptionsV3,
-  presetDefaultV3,
-  presetMinimalV3,
-  presetSoftCardV3,
-  presetSidesV3,
   defaultStyle,
 } from '../v3Types';
-import type { FieldId } from '../watermarkConfig';
-
-// ── 预设列表 ──────────────────────────────────────────────────────────
-
-const V3_PRESETS: { id: string; name: string; description: string; config: WatermarkConfigV3 }[] = [
-  { id: 'default', name: '默认排版', description: '底部栏：左上品牌+型号，左下参数，右侧自动 Logo', config: presetDefaultV3 },
-  { id: 'minimal', name: '极简参数', description: '仅右下显示核心拍摄参数', config: presetMinimalV3 },
-  { id: 'soft-card', name: '圆角卡片', description: '圆角+高底栏，适合社交媒体', config: presetSoftCardV3 },
-  { id: 'sides', name: '左右居中', description: '底部 Logo + 左侧垂直参数', config: presetSidesV3 },
-];
 
 // ── 类型守卫 ──────────────────────────────────────────────────────────
 
@@ -88,15 +76,15 @@ const FOOTER_SLOT_LABELS: Record<string, string> = {
 };
 
 const ANCHOR_LABELS: Record<string, string> = {
-  top_left: '左上',
-  top_center: '上方居中',
-  top_right: '右上',
-  middle_left: '左侧居中',
-  middle_center: '正中心',
-  middle_right: '右侧居中',
-  bottom_left: '左下',
-  bottom_center: '下方居中',
-  bottom_right: '右下',
+  'top-left': '左上',
+  'top-center': '上方居中',
+  'top-right': '右上',
+  'middle-left': '左侧居中',
+  'middle-center': '正中心',
+  'middle-right': '右侧居中',
+  'bottom-left': '左下',
+  'bottom-center': '下方居中',
+  'bottom-right': '右下',
 };
 
 // ── 组件 Props ────────────────────────────────────────────────────────
@@ -110,10 +98,6 @@ interface InspectorPanelV3Props {
 
 export function InspectorPanelV3({ config, setConfig }: InspectorPanelV3Props) {
   const [tab, setTab] = useState<'regions' | 'advanced'>('regions');
-
-  const applyPreset = useCallback((presetConfig: WatermarkConfigV3) => {
-    setConfig(structuredClone(presetConfig));
-  }, [setConfig]);
 
   const updateRegion = useCallback((regionId: string, patch: Partial<RegionConfig>) => {
     setConfig((prev) => ({
@@ -165,7 +149,7 @@ export function InspectorPanelV3({ config, setConfig }: InspectorPanelV3Props) {
       base.alignment = 'start';
       base.slots = { line1: createDefaultSlot('text') };
     } else if (type === 'free') {
-      base.anchor = 'bottom_right';
+      base.anchor = 'bottom-right';
       base.offset_x = 0.05;
       base.offset_y = 0.05;
       base.offset_unit = 'short_edge_ratio';
@@ -175,10 +159,11 @@ export function InspectorPanelV3({ config, setConfig }: InspectorPanelV3Props) {
   }, [setConfig]);
 
   return (
-    <aside className="inspector">
+    <section className="inspector inspector-v3" aria-label="水印设置">
       <div className="inspector-panel">
         {/* Tabs */}
         <div className="inspector-tabs">
+          <span className="inspector-heading">水印设置</span>
           <button className={`inspector-tab ${tab === 'regions' ? 'active' : ''}`} onClick={() => setTab('regions')}>
             区域
           </button>
@@ -191,22 +176,9 @@ export function InspectorPanelV3({ config, setConfig }: InspectorPanelV3Props) {
         <div className="inspector-body">
           {/* Regions Tab */}
           <div className={`tab-panel ${tab === 'regions' ? 'active' : ''}`}>
-            <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* Presets */}
-              <div className="editor-card">
-                <h3 className="editor-card-h3">预设</h3>
-                <div className="preset-list">
-                  {V3_PRESETS.map((p) => (
-                    <button key={p.id} className="preset-card" onClick={() => applyPreset(p.config)}>
-                      <span className="preset-card-name">{p.name}</span>
-                      <span className="preset-card-desc">{p.description}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+            <div className="anim-fade-in v3-settings-content">
               {/* Global custom text */}
-              <div className="editor-card">
+              <div className="editor-card v3-custom-text-card">
                 <label>
                   全局自定义文本
                   <input
@@ -230,7 +202,7 @@ export function InspectorPanelV3({ config, setConfig }: InspectorPanelV3Props) {
               ))}
 
               {/* Add Region */}
-              <div className="form-row" style={{ gap: 8 }}>
+              <div className="form-row v3-add-region-row">
                 <button className="small" onClick={() => addRegion('footer-bar')}>+ 底栏</button>
                 <button className="small" onClick={() => addRegion('side-edge')}>+ 侧边</button>
                 <button className="small" onClick={() => addRegion('free')}>+ 自由</button>
@@ -244,7 +216,7 @@ export function InspectorPanelV3({ config, setConfig }: InspectorPanelV3Props) {
           </div>
         </div>
       </div>
-    </aside>
+    </section>
   );
 }
 
@@ -439,7 +411,10 @@ function FreeEditor({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <label>
         锚点
-        <select value={region.anchor ?? 'bottom_right'} onChange={(e) => onUpdate({ anchor: e.target.value })}>
+        <select
+          value={region.anchor ?? 'bottom-right'}
+          onChange={(e) => onUpdate({ anchor: e.target.value as RegionConfig['anchor'] })}
+        >
           {Object.entries(ANCHOR_LABELS).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
@@ -578,6 +553,24 @@ function ContentEditor({
   onUpdateStyle: (s: StyleConfig | null) => void;
 }) {
   const mergedStyle: StyleConfig = style ?? defaultStyle;
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
+  const [resourceStatus, setResourceStatus] = useState('');
+
+  const uploadResource = async (file: File, kind: 'logo' | 'signature') => {
+    setResourceStatus('上传中...');
+    try {
+      const result = await uploadResourceV3(file, kind);
+      if (kind === 'logo' && isLogoContent(content)) {
+        onUpdateContent({ ...content, path: result.resource_id });
+      } else if (kind === 'signature' && isSignatureContent(content)) {
+        onUpdateContent({ ...content, path: result.resource_id });
+      }
+      setResourceStatus('上传完成');
+    } catch (error) {
+      setResourceStatus(error instanceof Error ? error.message : '上传失败');
+    }
+  };
 
   if (isTextContent(content)) {
     return (
@@ -606,17 +599,28 @@ function ContentEditor({
             style={{ width: 60, height: 32, padding: 2 }}
           />
         </label>
-        <label className="inline">
-          <span className="text-sm" style={{ minWidth: 60 }}>
-            路径
-          </span>
+        <div className="resource-upload-row">
           <input
-            type="text"
-            value={content.path}
-            placeholder="空 = 自动识别"
-            onChange={(e) => onUpdateContent({ ...content, path: e.target.value })}
+            ref={logoInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void uploadResource(file, 'logo');
+              event.target.value = '';
+            }}
           />
-        </label>
+          <button className="small" onClick={() => logoInputRef.current?.click()}>
+            {content.path ? '替换自定义 Logo' : '上传自定义 Logo'}
+          </button>
+          {content.path && (
+            <button className="small ghost" onClick={() => onUpdateContent({ ...content, path: '' })}>
+              使用自动 Logo
+            </button>
+          )}
+          {resourceStatus && <span className="text-tertiary text-xs">{resourceStatus}</span>}
+        </div>
       </div>
     );
   }
@@ -624,6 +628,28 @@ function ContentEditor({
   if (isSignatureContent(content)) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="resource-upload-row">
+          <input
+            ref={signatureInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void uploadResource(file, 'signature');
+              event.target.value = '';
+            }}
+          />
+          <button className="small" onClick={() => signatureInputRef.current?.click()}>
+            {content.path ? '替换签名' : '上传签名'}
+          </button>
+          {content.path && (
+            <button className="small ghost" onClick={() => onUpdateContent({ ...content, path: '' })}>
+              清除
+            </button>
+          )}
+          {resourceStatus && <span className="text-tertiary text-xs">{resourceStatus}</span>}
+        </div>
         <label className="inline">
           <input
             type="checkbox"
@@ -811,7 +837,7 @@ function AdvancedTab({
   const margins = config.canvas.margins;
 
   return (
-    <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="anim-fade-in v3-settings-content v3-advanced-content">
       {/* Canvas */}
       <div className="editor-card">
         <h3 className="editor-card-h3">画布</h3>
@@ -911,11 +937,13 @@ function AdvancedTab({
         <div className="form-row" style={{ gap: 8 }}>
           <label className="small-label">
             字体
-            <input
-              type="text"
+            <select
               value={config.defaults.font_family}
-              onChange={(e) => updateDefaults({ font_family: e.target.value })}
-            />
+              onChange={(e) => updateDefaults({ font_family: e.target.value as StyleConfig['font_family'] })}
+            >
+              <option value="NotoSansCJKsc-Regular.otf">Noto Sans CJK SC Regular</option>
+              <option value="NotoSansCJKsc-Bold.otf">Noto Sans CJK SC Bold</option>
+            </select>
           </label>
           <label className="inline">
             <input type="checkbox" checked={config.defaults.bold} onChange={(e) => updateDefaults({ bold: e.target.checked })} />

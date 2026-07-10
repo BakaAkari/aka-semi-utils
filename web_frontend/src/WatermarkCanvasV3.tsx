@@ -9,9 +9,9 @@
 
 import { useEffect, useRef } from 'react';
 import type { WatermarkConfigV3, FieldChip, TextContent } from './v3Types';
+import { PLACEHOLDER_EXIF } from './v3Types';
 import { computeLayout } from './v3_layout/layoutEngine';
 import type { LayoutResult, ComputedElement } from './v3_layout/layoutEngine';
-import { PLACEHOLDER_EXIF } from './watermarkConfig';
 
 // ── 文本解析（chips → 实际文本）───────────────────────────────────────
 
@@ -88,54 +88,46 @@ function drawElement(ctx: CanvasRenderingContext2D, el: ComputedElement, customT
 
       const fontWeight = style.bold ? '700' : '400';
       const fontSize = style.font_size ?? 16;
-      ctx.font = `${fontWeight} ${fontSize}px "Noto Sans CJK SC", "Microsoft YaHei", sans-serif`;
+      ctx.save();
+      ctx.font = `${fontWeight} ${fontSize}px "AkaSemiNoto", "Microsoft YaHei", sans-serif`;
       ctx.fillStyle = style.color;
-
-      // 根据 anchor 调整绘制位置
-      const metrics = ctx.measureText(text);
-      const textW = metrics.width;
-      const textH = fontSize; // 近似高度
-
-      let drawX = rect.x;
-      let drawY = rect.y;
-
-      // anchor 修正
-      if (anchor.includes('center')) {
-        drawX = rect.x - textW / 2;
-      } else if (anchor.includes('right')) {
-        drawX = rect.x - textW;
-      }
-
-      if (anchor.includes('middle')) {
-        drawY = rect.y + textH / 2;
-      } else if (anchor.includes('bottom')) {
-        drawY = rect.y;
-      } else {
-        // top
-        drawY = rect.y + textH;
-      }
-
-      // Canvas fillText 的 y 是 baseline，需要调整
-      drawY += fontSize * 0.8;
-
-      ctx.fillText(text, drawX, drawY);
+      ctx.textAlign = anchor.includes('right') ? 'right' : anchor.includes('center') ? 'center' : 'left';
+      ctx.textBaseline = anchor.includes('bottom') ? 'bottom' : anchor.includes('middle') ? 'middle' : 'top';
+      ctx.fillText(text, rect.x, rect.y);
+      ctx.restore();
       break;
     }
 
     case 'logo': {
       // Logo 绘制：简化为矩形占位，实际应加载图片
+      const origin = anchorOrigin(rect, anchor);
       ctx.fillStyle = '#cccccc';
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillRect(origin.x, origin.y, rect.w, rect.h);
       break;
     }
 
     case 'signature': {
       // 签名绘制：简化为矩形占位
+      const origin = anchorOrigin(rect, anchor);
       ctx.fillStyle = '#aaaaaa';
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillRect(origin.x, origin.y, rect.w, rect.h);
       break;
     }
   }
+}
+
+function anchorOrigin(rect: ComputedElement['rect'], anchor: string): { x: number; y: number } {
+  const x = anchor.includes('right')
+    ? rect.x - rect.w
+    : anchor.includes('center')
+      ? rect.x - rect.w / 2
+      : rect.x;
+  const y = anchor.includes('bottom')
+    ? rect.y - rect.h
+    : anchor.includes('middle')
+      ? rect.y - rect.h / 2
+      : rect.y;
+  return { x, y };
 }
 
 // ── 组件 ──────────────────────────────────────────────────────────────

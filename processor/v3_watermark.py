@@ -15,6 +15,7 @@ from __future__ import annotations
 from jinja2 import Template
 from PIL import Image
 
+from core.jinja2renders import resolve_auto_logo
 from processor.core import PipelineContext, register
 from processor.filters import FilterProcessor
 from processor.generators import RichTextGenerator, TextSegment
@@ -71,7 +72,7 @@ class WatermarkV3Filter(FilterProcessor):
         if el.type == "text":
             self._render_text(canvas, el, config, exif, file_path)
         elif el.type == "logo":
-            self._render_logo(canvas, el)
+            self._render_logo(canvas, el, exif)
         elif el.type == "signature":
             self._render_signature(canvas, el, exif, file_path)
 
@@ -107,14 +108,17 @@ class WatermarkV3Filter(FilterProcessor):
 
     # ── Logo 渲染 ───────────────────────────────────────────────────────
 
-    def _render_logo(self, canvas: Image.Image, el: ComputedElement) -> None:
+    def _render_logo(self, canvas: Image.Image, el: ComputedElement, exif: dict) -> None:
         if not isinstance(el.content, LogoContent):
             return
 
         logo_path = el.content.path
         if not logo_path:
-            # 空 path 表示 auto logo，使用 Jinja 表达式由 core.image_io 解析
-            logo_path = "{{auto_logo()|replace('\\\\\\\\', '/')}}"
+            # 空 path 表示 auto logo；仅根据受控 EXIF 品牌值匹配内置资源。
+            logo_path = resolve_auto_logo(exif)
+
+        if not logo_path:
+            return
 
         try:
             from core.image_io import load_logo

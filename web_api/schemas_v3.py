@@ -6,17 +6,32 @@ All validators are strict (extra=forbid) to prevent accidental field injection.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from web_api.errors import ApiError
 
 Color = str
+ResourceId = str
+Anchor = Literal[
+    "top-left", "top-center", "top-right",
+    "middle-left", "middle-center", "middle-right",
+    "bottom-left", "bottom-center", "bottom-right",
+]
+
+_RESOURCE_ID_PATTERN = r"^(?:[A-Za-z0-9_-]{20,64}\.(?:png|jpg|jpeg|webp))?$"
+_FOOTER_SLOT_IDS = frozenset({
+    "left-logo", "left-top", "left-bottom", "center",
+    "right-top", "right-bottom", "right-logo",
+})
+_SIDE_SLOT_RE = re.compile(r"^line[1-9][0-9]?$", re.ASCII)
+_FREE_SLOT_RE = re.compile(r"^sig[1-9][0-9]?$", re.ASCII)
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
 
 # ── Leaf models ──────────────────────────────────────────────────────────
@@ -36,7 +51,7 @@ class TextContentPayload(StrictModel):
 
 
 class LogoContentPayload(StrictModel):
-    path: str = Field(default="", max_length=256)
+    path: ResourceId = Field(default="", max_length=128, pattern=_RESOURCE_ID_PATTERN)
     color: Color = "#D8D8D6"
 
     @field_validator("color")
@@ -46,7 +61,7 @@ class LogoContentPayload(StrictModel):
 
 
 class SignatureContentPayload(StrictModel):
-    path: str = Field(default="", max_length=256)
+    path: ResourceId = Field(default="", max_length=128, pattern=_RESOURCE_ID_PATTERN)
     invert_mono: bool = False
     size_ratio: float = Field(default=0.20, ge=0.01, le=1.0)
 
@@ -56,7 +71,9 @@ class StyleConfigPayload(StrictModel):
     font_size_ratio: float | None = Field(default=None, ge=0.0, le=0.5)
     size_reference: Literal["region_height", "short_edge", "long_edge"] = "region_height"
     color: Color = "#222222"
-    font_family: str = Field(default="NotoSansCJKsc-Bold.otf", max_length=128)
+    font_family: Literal[
+        "NotoSansCJKsc-Regular.otf", "NotoSansCJKsc-Bold.otf",
+    ] = "NotoSansCJKsc-Bold.otf"
     bold: bool = True
     line_height: float = Field(default=1.2, ge=0.5, le=3.0)
 
@@ -74,21 +91,45 @@ class SlotConfigPayload(StrictModel):
 
 class WidthPayload(StrictModel):
     mode: Literal["pixel", "short_edge_ratio"] = "short_edge_ratio"
-    value: float = Field(default=0.05, ge=0.0, le=1.0)
+    value: float = Field(default=0.05, ge=0.0, le=600.0)
+
+    @model_validator(mode="after")
+    def valid_mode_range(self) -> WidthPayload:
+        if self.mode == "short_edge_ratio" and self.value > 1.0:
+            raise ValueError("短边比例宽度不能大于 1")
+        return self
 
 
 class RegionConfigPayload(StrictModel):
-    id: str = Field(default="", max_length=64)
-    type: Literal["footer-bar", "side-edge", "free"] = "footer-bar"
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+    type: Literal["footer-bar", "side-edge", "free"]
     enabled: bool = True
-    slots: dict[str, SlotConfigPayload] = Field(default_factory=dict)
+    slots: dict[str, SlotConfigPayload] = Field(default_factory=dict, max_length=12)
     edge: Literal["left", "right"] | None = None
     width: WidthPayload | None = None
     alignment: Literal["start", "center", "end"] | None = "start"
-    anchor: str | None = None
-    offset_x: float = 0.0
-    offset_y: float = 0.0
+    anchor: Anchor | None = None
+    offset_x: float = Field(default=0.0, ge=-2000.0, le=2000.0)
+    offset_y: float = Field(default=0.0, ge=-2000.0, le=2000.0)
     offset_unit: Literal["pixel", "short_edge_ratio"] = "short_edge_ratio"
+
+    @model_validator(mode="after")
+    def valid_region_shape(self) -> RegionConfigPayload:
+        slot_ids = set(self.slots)
+        if self.type == "footer-bar":
+            invalid = slot_ids - _FOOTER_SLOT_IDS
+        elif self.type == "side-edge":
+            invalid = {slot_id for slot_id in slot_ids if not _SIDE_SLOT_RE.fullmatch(slot_id)}
+        else:
+            invalid = {slot_id for slot_id in slot_ids if not _FREE_SLOT_RE.fullmatch(slot_id)}
+        if invalid:
+            raise ValueError(f"区域包含不支持的槽位: {', '.join(sorted(invalid))}")
+
+        if self.offset_unit == "short_edge_ratio" and (
+            abs(self.offset_x) > 1.0 or abs(self.offset_y) > 1.0
+        ):
+            raise ValueError("短边比例偏移必须在 -1 到 1 之间")
+        return self
 
 
 class MarginsConfigPayload(StrictModel):
@@ -125,6 +166,10 @@ class WatermarkPayloadV3(StrictModel):
 def is_v3_payload(payload: dict[str, Any]) -> bool:
     """Heuristic: V3 payloads always contain a ``regions`` list."""
     return isinstance(payload, dict) and "regions" in payload
+
+
+def success_response(**data: Any) -> dict[str, Any]:
+    return {"ok": True, **data}
 
 
 def validate_v3_payload(payload: dict[str, Any] | None) -> dict[str, Any]:

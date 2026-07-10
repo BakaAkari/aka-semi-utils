@@ -2,6 +2,7 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState } from
 import { processImageV3, type ApiFile } from './apiV3';
 import { InspectorPanelV3 } from './components/InspectorPanelV3';
 import { TopBar } from './components/TopBar';
+import { V3LeftRail } from './components/V3LeftRail';
 import { WatermarkCanvasV3 } from './WatermarkCanvasV3';
 import { createDefaultWatermarkConfigV3, type WatermarkConfigV3 } from './v3Types';
 import './styles.css';
@@ -204,12 +205,15 @@ export function V3HomePage() {
   return (
     <V3AppContext.Provider value={contextValue}>
       <div className="app-shell">
-        <TopBar />
-        <div className="workspace-v2">
-          <InspectorPanelV3 config={config} setConfig={setConfig} />
-          <div className="canvas-area">
-            <WatermarkCanvasV3 config={config} image={canvasImage} imageSize={imageSize} />
-          </div>
+        <TopBar controller={contextValue} />
+        <div className="workspace-v3">
+          <V3LeftRail />
+          <main className="v3-main-workspace">
+            <div className="canvas-area">
+              <WatermarkCanvasV3 config={config} image={canvasImage} imageSize={imageSize} />
+            </div>
+            <InspectorPanelV3 config={config} setConfig={setConfig} />
+          </main>
         </div>
         <div className="toast-container">
           {toasts.map(t => (

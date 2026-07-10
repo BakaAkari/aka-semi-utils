@@ -21,9 +21,8 @@ from starlette.concurrency import run_in_threadpool
 
 from web_api import stats
 from web_api.errors import ApiError
-from web_api.processing import process_image, process_image_v3
-from web_api.schemas import config_from_payload, success_response
-from web_api.schemas_v3 import is_v3_payload, validate_v3_payload
+from web_api.processing import process_image_v3
+from web_api.schemas_v3 import is_v3_payload, success_response, validate_v3_payload
 from web_api.settings import settings
 from web_api.storage import (
     cleanup_expired_files,
@@ -39,6 +38,7 @@ _api = settings.api_prefix
 
 app = FastAPI(title="aka-semi-utils Web API", version="0.1.0")
 _job_slots = asyncio.Semaphore(max(1, settings.max_concurrent_jobs))
+_MAX_CONFIG_JSON_BYTES = 64 * 1024
 
 # Serve fonts as static files
 _fonts_dir = Path(__file__).parent.parent / "config" / "fonts"
@@ -221,6 +221,7 @@ async def _run_single_image(
     *,
     preview: bool,
 ) -> dict[str, Any]:
+    config_payload = _parse_config_json(config_json)
     cleanup_expired_files(settings)
     if file is not None:
         input_path = await save_upload(file, settings)
@@ -230,7 +231,6 @@ async def _run_single_image(
     else:
         raise ApiError(code="missing_image", message="请先上传图片", status_code=400)
 
-    config_payload = _parse_config_json(config_json)
     output_path = new_output_path(
         input_path, settings, prefix="preview" if preview else "process",
     )
@@ -247,7 +247,6 @@ async def _run_single_image(
     try:
         t0 = time.perf_counter()
 
-        # ── V3 path ──────────────────────────────────────────────────────
         if is_v3_payload(config_payload):
             v3_config = validate_v3_payload(config_payload)
             result_path = await run_in_threadpool(
@@ -258,16 +257,11 @@ async def _run_single_image(
                 settings,
                 preview=preview,
             )
-        # ── V2 path ──────────────────────────────────────────────────────
         else:
-            watermark_config = config_from_payload(config_payload)
-            result_path = await run_in_threadpool(
-                process_image,
-                input_path,
-                output_path,
-                watermark_config,
-                settings,
-                preview=preview,
+            raise ApiError(
+                code="legacy_config_removed",
+                message="旧版水印配置已下线，请使用 V3 Region 配置",
+                status_code=410,
             )
 
         latency_ms = int((time.perf_counter() - t0) * 1000)
@@ -289,9 +283,19 @@ async def _run_single_image(
 
 
 def _parse_config_json(raw: str) -> dict[str, Any]:
+    if len(raw.encode("utf-8")) > _MAX_CONFIG_JSON_BYTES:
+        raise ApiError(
+            code="config_too_large",
+            message="水印配置过大",
+            status_code=413,
+        )
+
+    def reject_non_finite(value: str) -> None:
+        raise ValueError(f"不允许非有限数值: {value}")
+
     try:
-        payload = json.loads(raw or "{}")
-    except json.JSONDecodeError as exc:
+        payload = json.loads(raw or "{}", parse_constant=reject_non_finite)
+    except (json.JSONDecodeError, ValueError) as exc:
         raise ApiError(
             code="invalid_config_json",
             message="配置不是合法 JSON",

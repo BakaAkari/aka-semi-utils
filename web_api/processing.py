@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -10,84 +11,12 @@ from PIL import Image, ImageOps
 from PIL.Image import DecompressionBombWarning
 
 import processor  # noqa: F401  # side-effect: register processors
-from core.template_builder import render_processors
 from core.util import get_exif
 from processor.core import start_process
-from shared.processor_assembler import config_to_processors
 from shared.v3_assembler import v3_config_to_processors
-from shared.watermark_schema import WatermarkConfig
 from web_api.errors import ApiError
 from web_api.settings import WebApiSettings
 from web_api.storage import resolve_resource
-
-
-def process_image(
-    input_path: Path,
-    output_path: Path,
-    config: WatermarkConfig,
-    settings: WebApiSettings,
-    *,
-    preview: bool = False,
-) -> Path:
-    """Run the shared processor pipeline for one uploaded image (V2)."""
-
-    if config.logo.custom_path:
-        config.logo.custom_path = str(resolve_resource(config.logo.custom_path, "logo", settings))
-    if config.signature.path:
-        config.signature.path = str(resolve_resource(config.signature.path, "signature", settings))
-
-    if preview:
-        _validate_image(input_path, settings, max_pixels=settings.preview_max_image_pixels, mode="preview")
-    else:
-        _validate_image(input_path, settings, max_pixels=settings.max_image_pixels, mode="process")
-    processors_template = config_to_processors(config)
-    if not processors_template:
-        raise ApiError(
-            code="empty_pipeline",
-            message="当前配置没有生成可执行的水印处理管线",
-            status_code=400,
-        )
-
-    try:
-        exif = get_exif(str(input_path))
-        processors = render_processors(processors_template, exif, str(input_path))
-        if preview:
-            image = _load_preview_image(input_path, settings)
-            start_process(
-                data=processors,
-                input_path=str(input_path),
-                output_path=str(output_path),
-                initial_buffer=[image],
-                pre_loaded_exif=exif,
-            )
-        else:
-            start_process(
-                data=processors,
-                input_path=str(input_path),
-                output_path=str(output_path),
-                pre_loaded_exif=exif,
-            )
-    except ApiError:
-        raise
-    except Exception as exc:
-        import logging
-        import traceback
-        _logger = logging.getLogger("web_api.processing")
-        _logger.error("Image processing failed:\n%s", traceback.format_exc())
-        output_path.unlink(missing_ok=True)
-        raise ApiError(
-            code="processing_failed",
-            message="图片处理失败",
-            status_code=500,
-        ) from exc
-
-    if not output_path.exists():
-        raise ApiError(
-            code="output_missing",
-            message="处理完成但未生成输出文件",
-            status_code=500,
-        )
-    return output_path
 
 
 def process_image_v3(
@@ -105,8 +34,9 @@ def process_image_v3(
     else:
         _validate_image(input_path, settings, max_pixels=settings.max_image_pixels, mode="process")
 
-    processors_template = v3_config_to_processors(config_dict)
-    if not processors_template:
+    resolved_config = _resolve_v3_resources(config_dict, settings)
+    processors = v3_config_to_processors(resolved_config)
+    if not processors:
         raise ApiError(
             code="empty_pipeline",
             message="当前 V3 配置没有生成可执行的水印处理管线",
@@ -115,7 +45,6 @@ def process_image_v3(
 
     try:
         exif = get_exif(str(input_path))
-        processors = render_processors(processors_template, exif, str(input_path))
         if preview:
             image = _load_preview_image(input_path, settings)
             start_process(
@@ -153,6 +82,34 @@ def process_image_v3(
             status_code=500,
         )
     return output_path
+
+
+def _resolve_v3_resources(
+    config_dict: dict[str, Any],
+    settings: WebApiSettings,
+) -> dict[str, Any]:
+    """Resolve opaque V3 logo/signature ids after public schema validation.
+
+    User input never reaches a server path sink. Disabled regions and slots are
+    intentionally ignored because their resources are not consumed.
+    """
+
+    resolved = deepcopy(config_dict)
+    for region in resolved.get("regions", []):
+        if not region.get("enabled", False):
+            continue
+        for slot in (region.get("slots") or {}).values():
+            if not slot.get("enabled", False):
+                continue
+            content = slot.get("content")
+            if not isinstance(content, dict):
+                continue
+            resource_id = content.get("path", "")
+            if not resource_id:
+                continue
+            kind = "signature" if "size_ratio" in content else "logo"
+            content["path"] = str(resolve_resource(resource_id, kind, settings))
+    return resolved
 
 
 def _validate_image(path: Path, settings: WebApiSettings, *, max_pixels: int, mode: str) -> None:
