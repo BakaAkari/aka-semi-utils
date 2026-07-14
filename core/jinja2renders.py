@@ -20,6 +20,12 @@ def vh(context, percent):
 @pass_context
 def auto_logo(context, brand: str | None = None):
     exif = context.get('exif', {})
+    return resolve_auto_logo(exif, brand)
+
+
+def resolve_auto_logo(exif: dict, brand: str | None = None) -> str | None:
+    """Resolve an installed logo from trusted EXIF values without Jinja evaluation."""
+
     brand = (brand or exif.get('Make', 'default')).lower()
 
     # Split the brand name into tokens (e.g. "NIKON CORPORATION" → ["nikon", "corporation"])

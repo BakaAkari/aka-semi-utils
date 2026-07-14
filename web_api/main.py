@@ -21,8 +21,8 @@ from starlette.concurrency import run_in_threadpool
 
 from web_api import stats
 from web_api.errors import ApiError
-from web_api.processing import process_image
-from web_api.schemas import config_from_payload, success_response
+from web_api.processing import process_image_v3
+from web_api.schemas_v3 import is_v3_payload, success_response, validate_v3_payload
 from web_api.settings import settings
 from web_api.storage import (
     cleanup_expired_files,
@@ -34,15 +34,23 @@ from web_api.storage import (
     save_upload,
 )
 
+_api = settings.api_prefix
+
 app = FastAPI(title="aka-semi-utils Web API", version="0.1.0")
 _job_slots = asyncio.Semaphore(max(1, settings.max_concurrent_jobs))
+_MAX_CONFIG_JSON_BYTES = 64 * 1024
 
-# Serve fonts as static files
-_fonts_dir = Path(__file__).parent.parent / "config" / "fonts"
+# Serve fonts and logos as static files from the source config directories
+_project_root = Path(__file__).parent.parent
+_fonts_dir = _project_root / "config" / "fonts"
 if _fonts_dir.exists():
-    app.mount("/tools/watermark/api/fonts", StaticFiles(directory=str(_fonts_dir)), name="fonts")
+    app.mount(f"{_api}/fonts", StaticFiles(directory=str(_fonts_dir)), name="fonts")
 
-# Frontend static files are served by Caddy; API only serves fonts and endpoints here.
+_logos_dir = _project_root / "config" / "logos"
+if _logos_dir.exists():
+    app.mount(f"{_api}/logos", StaticFiles(directory=str(_logos_dir)), name="logos")
+
+# Frontend static files are served by Caddy; API only serves fonts/logos and endpoints here.
 
 
 @app.exception_handler(ApiError)
@@ -52,14 +60,14 @@ async def api_error_handler(_request: Request, exc: ApiError) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=exc.to_payload())
 
 
-@app.get("/tools/watermark/api/health")
+@app.get(f"{_api}/health")
 def health() -> dict[str, Any]:
     """Health check for local, Caddy, and systemd probes."""
 
     return success_response(status="ok")
 
 
-@app.post("/tools/watermark/api/_visit")
+@app.post(f"{_api}/_visit")
 async def visit_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
     """Record a visitor fingerprint."""
     visitor_id = payload.get("visitor_id", "")
@@ -69,7 +77,7 @@ async def visit_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
     return success_response(new=new)
 
 
-@app.get("/tools/watermark/api/_stats")
+@app.get(f"{_api}/_stats")
 def stats_endpoint(request: Request) -> dict[str, Any]:
     """Return full statistics (requires X-Dev-Password header)."""
     password = request.headers.get("X-Dev-Password", "")
@@ -78,13 +86,13 @@ def stats_endpoint(request: Request) -> dict[str, Any]:
     return stats.get_stats()
 
 
-@app.get("/tools/watermark/api/_stats/health")
+@app.get(f"{_api}/_stats/health")
 def stats_health() -> dict[str, Any]:
     """Check stats database connectivity."""
     return stats.health_check()
 
 
-@app.post("/tools/watermark/api/uploads")
+@app.post(f"{_api}/uploads")
 async def upload_image(file: UploadFile = File(...)) -> dict[str, Any]:
     """Upload an input image once and return an expiring opaque id."""
 
@@ -96,7 +104,7 @@ async def upload_image(file: UploadFile = File(...)) -> dict[str, Any]:
     )
 
 
-@app.post("/tools/watermark/api/upload-resource")
+@app.post(f"{_api}/upload-resource")
 async def upload_resource(
     file: UploadFile = File(...),
     kind: str = Form(default="logo"),  # "logo" or "signature"
@@ -111,7 +119,7 @@ async def upload_resource(
     )
 
 
-@app.post("/tools/watermark/api/process")
+@app.post(f"{_api}/process")
 async def process_endpoint(
     file: UploadFile | None = File(default=None),
     image_id: str = Form(default=""),
@@ -126,7 +134,7 @@ async def process_endpoint(
     )
 
 
-@app.post("/tools/watermark/api/preview")
+@app.post(f"{_api}/preview")
 async def preview_endpoint(
     file: UploadFile | None = File(default=None),
     image_id: str = Form(default=""),
@@ -141,7 +149,7 @@ async def preview_endpoint(
     )
 
 
-@app.get("/tools/watermark/api/files/{filename}")
+@app.get(f"{_api}/files/{{filename}}")
 def get_output_file(filename: str, download_filename: str = "") -> FileResponse:
     """Download a generated output or uploaded resource by server-side filename.
 
@@ -154,7 +162,7 @@ def get_output_file(filename: str, download_filename: str = "") -> FileResponse:
     return FileResponse(path, filename=download_filename or path.name)
 
 
-@app.post("/tools/watermark/api/batch-download")
+@app.post(f"{_api}/batch-download")
 async def batch_download_endpoint(payload: dict[str, Any], background_tasks: BackgroundTasks) -> FileResponse:
     """Download multiple processed images as a zip archive."""
 
@@ -218,6 +226,7 @@ async def _run_single_image(
     *,
     preview: bool,
 ) -> dict[str, Any]:
+    config_payload = _parse_config_json(config_json)
     cleanup_expired_files(settings)
     if file is not None:
         input_path = await save_upload(file, settings)
@@ -226,11 +235,11 @@ async def _run_single_image(
         input_path = resolve_upload(image_id, settings)
     else:
         raise ApiError(code="missing_image", message="请先上传图片", status_code=400)
-    config_payload = _parse_config_json(config_json)
-    watermark_config = config_from_payload(config_payload)
+
     output_path = new_output_path(
         input_path, settings, prefix="preview" if preview else "process",
     )
+
     try:
         await asyncio.wait_for(_job_slots.acquire(), timeout=30.0)
     except TimeoutError as exc:
@@ -239,16 +248,27 @@ async def _run_single_image(
             message="服务器正在处理其他图片，请稍后重试",
             status_code=429,
         ) from exc
+
     try:
         t0 = time.perf_counter()
-        result_path = await run_in_threadpool(
-            process_image,
-            input_path,
-            output_path,
-            watermark_config,
-            settings,
-            preview=preview,
-        )
+
+        if is_v3_payload(config_payload):
+            v3_config = validate_v3_payload(config_payload)
+            result_path = await run_in_threadpool(
+                process_image_v3,
+                input_path,
+                output_path,
+                v3_config,
+                settings,
+                preview=preview,
+            )
+        else:
+            raise ApiError(
+                code="legacy_config_removed",
+                message="旧版水印配置已下线，请使用 V3 Region 配置",
+                status_code=410,
+            )
+
         latency_ms = int((time.perf_counter() - t0) * 1000)
     finally:
         _job_slots.release()
@@ -264,13 +284,23 @@ async def _run_single_image(
     # keeping the actual output suffix (HEIC inputs become .jpg, etc.).
     orig_stem = Path(original_filename).stem if original_filename else "image"
     download_filename = f"{orig_stem}{result_path.suffix}"
-    return success_response(file=public_file_payload(result_path, download_filename=download_filename))
+    return success_response(file=public_file_payload(result_path, download_filename=download_filename, api_prefix=_api))
 
 
 def _parse_config_json(raw: str) -> dict[str, Any]:
+    if len(raw.encode("utf-8")) > _MAX_CONFIG_JSON_BYTES:
+        raise ApiError(
+            code="config_too_large",
+            message="水印配置过大",
+            status_code=413,
+        )
+
+    def reject_non_finite(value: str) -> None:
+        raise ValueError(f"不允许非有限数值: {value}")
+
     try:
-        payload = json.loads(raw or "{}")
-    except json.JSONDecodeError as exc:
+        payload = json.loads(raw or "{}", parse_constant=reject_non_finite)
+    except (json.JSONDecodeError, ValueError) as exc:
         raise ApiError(
             code="invalid_config_json",
             message="配置不是合法 JSON",

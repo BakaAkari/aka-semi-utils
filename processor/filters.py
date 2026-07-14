@@ -275,6 +275,11 @@ class WatermarkFilter(FilterProcessor):
 
     def process(self, ctx: PipelineContext):
         img = ctx.get_buffer()[0]
+
+        if ctx.get("layout_mode") == "sides":
+            self._process_sides(ctx, img)
+            return
+
         params = self._collect_params(ctx, img)
 
         corners = self._render_corner_texts(ctx, params)
@@ -552,6 +557,150 @@ class WatermarkFilter(FilterProcessor):
             (right_logo_x, right_logo_y),
             mask=right_logo if right_logo.mode == "RGBA" else None,
         )
+
+    # ------------------------------------------------------- sides layout
+
+    def _process_sides(self, ctx: PipelineContext, img: Image.Image) -> None:
+        """Render the sides (左右居中) layout: vertically-stacked text blocks
+        on the left and right edges of the image, with logo in the bottom bar."""
+        params = self._collect_params(ctx, img)
+        side_images = self._render_side_texts(ctx, params, img)
+        logos = self._load_logos(ctx)
+
+        canvas_width = img.width + params["left_margin"] + params["right_margin"]
+        canvas_height = img.height + params["top_margin"] + params["bottom_margin"]
+        common_spacing = int(0.02 * canvas_width)
+
+        canvas = Image.new("RGBA", (canvas_width, canvas_height), params["color"])
+        footer_start_y = params["top_margin"] + img.height
+
+        canvas.paste(
+            img,
+            (params["left_margin"], params["top_margin"]),
+            mask=img if img.mode == "RGBA" else None,
+        )
+
+        # Left-side text block — vertically centered on left edge
+        left_img = side_images.get("left_side")
+        if left_img is not None:
+            left_x = params["left_margin"] + common_spacing
+            left_y = params["top_margin"] + (img.height - left_img.height) // 2
+            canvas.paste(
+                left_img, (left_x, left_y),
+                mask=left_img if left_img.mode == "RGBA" else None,
+            )
+
+        # Right-side text block — vertically centered on right edge
+        right_img = side_images.get("right_side")
+        if right_img is not None:
+            right_x = canvas_width - params["right_margin"] - common_spacing - right_img.width
+            right_y = params["top_margin"] + (img.height - right_img.height) // 2
+            canvas.paste(
+                right_img, (right_x, right_y),
+                mask=right_img if right_img.mode == "RGBA" else None,
+            )
+
+        # Bottom bar: left logo
+        left_logo = logos.get("left_logo")
+        if left_logo is not None:
+            self._paste_left_logo_bar(canvas, left_logo, params, footer_start_y, common_spacing)
+
+        # Bottom bar: center logo
+        self._paste_center_logo(canvas, logos["center_logo"], params, footer_start_y)
+
+        # Bottom bar: right logo
+        right_logo = logos.get("right_logo")
+        if right_logo is not None:
+            self._paste_right_logo(
+                canvas=canvas,
+                right_logo=right_logo,
+                params=params,
+                layout={
+                    "rt_x": canvas_width - params["right_margin"] - common_spacing,
+                    "rb_x": canvas_width - params["right_margin"] - common_spacing,
+                },
+                footer_start_y=footer_start_y,
+                common_spacing=common_spacing,
+            )
+
+        ctx.update_buffer([canvas]).save_buffer(self.name()).success()
+
+    def _paste_left_logo_bar(
+        self,
+        canvas: Image.Image,
+        left_logo: Image.Image,
+        params: dict,
+        footer_start_y: int,
+        common_spacing: int,
+    ) -> None:
+        """Paste the left logo in the bottom bar area (no image re-paste, no delimiter)."""
+        left_logo = self._resize_logo_to_target_height(left_logo, canvas, params, footer_start_y)
+        logo_x = params["left_margin"]
+        logo_y = self._logo_y(canvas, left_logo.height, footer_start_y)
+        canvas.paste(
+            left_logo, (logo_x, logo_y),
+            mask=left_logo if left_logo.mode == "RGBA" else None,
+        )
+
+    def _render_side_texts(
+        self, ctx: PipelineContext, params: dict, img: Image.Image,
+    ) -> dict[str, Image.Image | None]:
+        """Render left and right side texts as vertically-stacked image blocks.
+
+        Each side's text lines are rendered individually via ``start_process``
+        and then composited into a single vertical strip.
+        """
+        bottom_margin = params["bottom_margin"]
+        result: dict[str, Image.Image | None] = {"left_side": None, "right_side": None}
+
+        for side_key in ("left_side", "right_side"):
+            side_cfg = ctx.get(side_key)
+            if not isinstance(side_cfg, dict) or "lines" not in side_cfg:
+                continue
+
+            lines = side_cfg["lines"]
+            if not lines:
+                continue
+
+            height_ratio = side_cfg.get("height_ratio", 0) or 0.04
+            font_height = max(8, int(bottom_margin * height_ratio / 0.12))
+
+            line_images: list[Image.Image] = []
+            for line_info in lines:
+                proc_config = {
+                    "processor_name": "rich_text",
+                    "text": line_info["text"],
+                    "color": line_info["color"],
+                    "font_path": line_info["font_path"],
+                    "height": font_height,
+                }
+                try:
+                    rendered = start_process([proc_config])
+                    line_images.append(rendered)
+                except Exception:
+                    logger.warning(
+                        "Failed to render side text line: %s", line_info.get("text", "")
+                    )
+
+            if not line_images:
+                continue
+
+            gap = max(2, font_height // 6)
+            stack_w = max(img.width for img in line_images)
+            stack_h = sum(img.height for img in line_images) + gap * (len(line_images) - 1)
+            stack = Image.new("RGBA", (stack_w, stack_h), (0, 0, 0, 0))
+
+            y = 0
+            for line_img in line_images:
+                stack.paste(
+                    line_img, (0, y),
+                    mask=line_img if line_img.mode == "RGBA" else None,
+                )
+                y += line_img.height + gap
+
+            result[side_key] = stack
+
+        return result
 
     @staticmethod
     def _target_logo_height(params: dict, _footer_start_y: int) -> int:

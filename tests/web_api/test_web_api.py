@@ -20,7 +20,44 @@ def _make_image(path: Path, size: tuple[int, int] = (320, 240)) -> Path:
     return path
 
 
-def _minimal_config() -> dict:
+def _minimal_v3_config(custom_text: str = "V3 WEB") -> dict:
+    return {
+        "canvas": {
+            "margins": {"top": 0, "right": 0, "bottom": 80, "left": 0},
+            "background": "#FFFFFF",
+            "border_radius": 0,
+        },
+        "regions": [
+            {
+                "id": "footer",
+                "type": "footer-bar",
+                "enabled": True,
+                "slots": {
+                    "left-top": {
+                        "enabled": True,
+                        "content": {
+                            "chips": [{"field_id": "custom_text", "custom_text": custom_text}],
+                            "separator": " ",
+                        },
+                        "style": None,
+                    },
+                },
+            },
+        ],
+        "defaults": {
+            "font_size": None,
+            "font_size_ratio": 0.35,
+            "size_reference": "region_height",
+            "color": "#222222",
+            "font_family": "NotoSansCJKsc-Bold.otf",
+            "bold": True,
+            "line_height": 1.2,
+        },
+        "custom_text": "",
+    }
+
+
+def _legacy_config() -> dict:
     return {
         "corners": {
             "left_top": {
@@ -29,10 +66,6 @@ def _minimal_config() -> dict:
             }
         },
         "logo": {"enabled": "disabled"},
-        "advanced": {
-            "footer_height_px": 80,
-            "global_color": "#222222",
-        },
     }
 
 
@@ -41,7 +74,7 @@ def _post_image(endpoint: str, image_path: Path, config: dict | None = None):
         return client.post(
             endpoint,
             files={"file": (image_path.name, file, "image/jpeg")},
-            data={"config": json.dumps(config if config is not None else _minimal_config())},
+            data={"config": json.dumps(config if config is not None else _minimal_v3_config())},
         )
 
 
@@ -51,12 +84,12 @@ def test_health() -> None:
     assert response.json() == {"ok": True, "status": "ok"}
 
 
-def test_process_image_generates_downloadable_file(tmp_path: Path) -> None:
-    image_path = _make_image(tmp_path / "input.jpg")
+def test_v3_process_image_generates_downloadable_file(tmp_path: Path) -> None:
+    image_path = _make_image(tmp_path / "input-v3.jpg")
 
     response = _post_image("/tools/watermark/api/process", image_path)
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.json()
     payload = response.json()
     assert payload["ok"] is True
     filename = payload["file"]["filename"]
@@ -68,12 +101,12 @@ def test_process_image_generates_downloadable_file(tmp_path: Path) -> None:
     assert download.content
 
 
-def test_preview_image_generates_downloadable_file(tmp_path: Path) -> None:
-    image_path = _make_image(tmp_path / "input.jpg", size=(900, 600))
+def test_v3_preview_image_generates_downloadable_file(tmp_path: Path) -> None:
+    image_path = _make_image(tmp_path / "input-v3.jpg", size=(900, 600))
 
     response = _post_image("/tools/watermark/api/preview", image_path)
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.json()
     payload = response.json()
     assert payload["ok"] is True
     filename = payload["file"]["filename"]
@@ -81,44 +114,13 @@ def test_preview_image_generates_downloadable_file(tmp_path: Path) -> None:
     assert (settings.output_dir / filename).exists()
 
 
-def test_web_api_renders_exif_jinja_before_processing(tmp_path: Path, monkeypatch) -> None:
-    image_path = _make_image(tmp_path / "exif.jpg")
-    captured: dict = {}
+def test_legacy_config_is_removed(tmp_path: Path) -> None:
+    image_path = _make_image(tmp_path / "legacy.jpg")
 
-    def fake_get_exif(path: str) -> dict:
-        assert Path(path).exists()
-        return {"ISO": "640", "CameraModelName": "X-T5"}
+    response = _post_image("/tools/watermark/api/process", image_path, _legacy_config())
 
-    def fake_start_process(**kwargs):
-        captured.update(kwargs)
-        output_path = Path(kwargs["output_path"])
-        Image.new("RGB", (32, 32), (1, 2, 3)).save(output_path)
-        return Image.new("RGB", (32, 32), (1, 2, 3))
-
-    monkeypatch.setattr(web_processing, "get_exif", fake_get_exif)
-    monkeypatch.setattr(web_processing, "start_process", fake_start_process)
-
-    response = _post_image(
-        "/tools/watermark/api/process",
-        image_path,
-        {
-            "corners": {
-                "left_top": {
-                    "chips": [{"field_id": "iso"}, {"field_id": "camera_model"}],
-                    "separator": "|",
-                    "font_size_ratio": 0.05,
-                }
-            },
-            "logo": {"enabled": "disabled"},
-        },
-    )
-
-    assert response.status_code == 200, response.json()
-    watermark = captured["data"][-1]
-    segments = watermark["left_top"]["text_segments"]
-    assert segments[0]["text"] == "ISO640"
-    assert segments[2]["text"] == "X-T5"
-    assert captured["pre_loaded_exif"] == {"ISO": "640", "CameraModelName": "X-T5"}
+    assert response.status_code == 410
+    assert response.json()["error"]["code"] == "legacy_config_removed"
 
 
 def test_process_pixel_limit_message_is_actionable(tmp_path: Path, monkeypatch) -> None:
@@ -198,15 +200,15 @@ def test_rejects_unsupported_extension(tmp_path: Path) -> None:
         response = client.post(
             "/tools/watermark/api/process",
             files={"file": ("input.txt", file, "text/plain")},
-            data={"config": json.dumps(_minimal_config())},
+            data={"config": json.dumps(_minimal_v3_config())},
         )
 
     assert response.status_code == 415
     assert response.json()["error"]["code"] == "unsupported_file_type"
 
 
-def test_custom_text_is_never_evaluated_as_jinja(tmp_path: Path, monkeypatch) -> None:
-    image_path = _make_image(tmp_path / "literal.jpg")
+def test_v3_custom_text_is_never_evaluated_as_jinja(tmp_path: Path, monkeypatch) -> None:
+    image_path = _make_image(tmp_path / "literal-v3.jpg")
     captured: dict = {}
 
     def fake_start_process(**kwargs):
@@ -217,29 +219,41 @@ def test_custom_text_is_never_evaluated_as_jinja(tmp_path: Path, monkeypatch) ->
     response = _post_image(
         "/tools/watermark/api/process",
         image_path,
-        {
-            "corners": {
-                "left_top": {
-                    "chips": [{"field_id": "custom_text", "custom_text": "probe={{ 7 * 7 }}"}],
-                }
-            },
-            "logo": {"enabled": "disabled"},
-        },
+        _minimal_v3_config(custom_text="probe={{ 7 * 7 }}"),
     )
 
     assert response.status_code == 200
-    assert captured["data"][-1]["left_top"]["text"] == "probe={{ 7 * 7 }}"
+    chips = captured["data"][0]["v3_config"]["regions"][0]["slots"]["left-top"]["content"]["chips"]
+    assert chips[0]["custom_text"] == "probe={{ 7 * 7 }}"
+
+
+def test_rejects_non_finite_and_oversized_config(tmp_path: Path) -> None:
+    image_path = _make_image(tmp_path / "bad-config.jpg")
+
+    with image_path.open("rb") as file:
+        non_finite = client.post(
+            "/tools/watermark/api/process",
+            files={"file": (image_path.name, file, "image/jpeg")},
+            data={"config": '{"regions": [], "custom_text": NaN}'},
+        )
+    assert non_finite.status_code == 400
+    assert non_finite.json()["error"]["code"] == "invalid_config_json"
+
+    with image_path.open("rb") as file:
+        oversized = client.post(
+            "/tools/watermark/api/process",
+            files={"file": (image_path.name, file, "image/jpeg")},
+            data={"config": json.dumps({"regions": [], "padding": "x" * (64 * 1024)})},
+        )
+    assert oversized.status_code == 413
+    assert oversized.json()["error"]["code"] == "config_too_large"
 
 
 def test_rejects_arbitrary_server_resource_path(tmp_path: Path) -> None:
     image_path = _make_image(tmp_path / "path.jpg")
-    config = _minimal_config()
-    config["logo"] = {
-        "enabled": "custom",
-        "position": "right",
-        "color": "#D8D8D6",
-        "custom_path": "/etc/passwd",
-    }
+    config = _minimal_v3_config()
+    slot = config["regions"][0]["slots"]["left-top"]
+    slot["content"] = {"path": "/etc/passwd", "color": "#D8D8D6"}
 
     response = _post_image("/tools/watermark/api/process", image_path, config)
 
@@ -255,7 +269,7 @@ def test_upload_once_then_process_by_image_id(tmp_path: Path) -> None:
 
     response = client.post(
         "/tools/watermark/api/preview",
-        data={"image_id": upload.json()["image_id"], "config": json.dumps(_minimal_config())},
+        data={"image_id": upload.json()["image_id"], "config": json.dumps(_minimal_v3_config())},
     )
 
     assert response.status_code == 200

@@ -1,11 +1,13 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { HomePage } from './HomePage';
+import { API_BASE } from './env';
+import { V3HomePage } from './V3HomePage';
 
 export function AppRouter() {
   return (
-    <BrowserRouter basename="/tools/watermark">
+    <BrowserRouter basename={API_BASE}>
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<V3HomePage />} />
+        <Route path="*" element={<V3HomePage />} />
       </Routes>
     </BrowserRouter>
   );

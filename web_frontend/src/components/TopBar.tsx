@@ -1,15 +1,35 @@
-import { useCallback, useContext } from 'react';
-import { AppContext } from '../HomePage';
+import type { V3AppContextType } from '../V3HomePage';
 
-export function TopBar() {
-  const ctx = useContext(AppContext);
-  if (!ctx) return null;
+export type TopBarController = Pick<
+  V3AppContextType,
+  | 'files'
+  | 'status'
+  | 'message'
+  | 'result'
+  | 'batchResults'
+  | 'progress'
+  | 'runProcess'
+  | 'runProcessAll'
+  | 'clearBatchResults'
+  | 'loadPreview'
+>;
 
-  const { files, status, message, result, batchResults, runPreview, runProcess, runProcessAll, progress, clearBatchResults } = ctx;
+export function TopBar({ controller: ctx }: { controller: TopBarController }) {
+
+  const { files, status, message, result, batchResults, progress, runProcess, runProcessAll, clearBatchResults, loadPreview } = ctx;
   const hasFiles = files.length > 0;
   const isRunning = status === 'running';
+  const isMulti = files.length > 1;
 
-  const downloadBatch = useCallback(() => {
+  const handleProcess = () => {
+    if (isMulti) {
+      void runProcessAll();
+    } else {
+      void runProcess();
+    }
+  };
+
+  const downloadBatch = () => {
     batchResults.forEach((file, i) => {
       const a = document.createElement('a');
       a.href = file.download_url;
@@ -21,7 +41,7 @@ export function TopBar() {
         document.body.removeChild(a);
       }, i * 300);
     });
-  }, [batchResults]);
+  };
 
   return (
     <header className="topbar">
@@ -59,17 +79,18 @@ export function TopBar() {
             </div>
           </div>
         )}
-
-        <button className="ghost" disabled={!hasFiles || isRunning} onClick={() => void runPreview()} title="刷新预览">
-          ↻ Preview
+        <button
+          disabled={!hasFiles || isRunning}
+          onClick={loadPreview}
+        >
+          预览
         </button>
-
-        <button className="primary" disabled={!hasFiles || isRunning} onClick={() => void runProcess()}>
-          Process
-        </button>
-
-        <button className="primary" disabled={!hasFiles || isRunning} onClick={() => void runProcessAll()}>
-          Process All
+        <button
+          className="primary"
+          disabled={!hasFiles || isRunning}
+          onClick={handleProcess}
+        >
+          {isMulti ? `Process All (${files.length})` : 'Process'}
         </button>
 
         {batchResults.length > 0 && (
@@ -77,13 +98,11 @@ export function TopBar() {
             <button className="success" onClick={downloadBatch} title={`下载全部 ${batchResults.length} 张`}>
               ↓ All ({batchResults.length})
             </button>
-            <button className="ghost micro" onClick={clearBatchResults} title="清除">
-              ✕
-            </button>
+            <button className="ghost micro" onClick={clearBatchResults} title="清除">✕</button>
           </>
         )}
 
-        {result && (
+        {result && !isMulti && (
           <a className="btn success" href={result.download_url} download={result.download_filename || result.filename}>
             ↓ Download
           </a>
