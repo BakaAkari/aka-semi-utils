@@ -107,7 +107,7 @@ def _resolve_v3_resources(
             resource_id = content.get("path", "")
             if not resource_id:
                 continue
-            kind = "signature" if "size_ratio" in content else "logo"
+            kind = "signature" if "invert_mono" in content else "logo"
             content["path"] = str(resolve_resource(resource_id, kind, settings))
     return resolved
 
