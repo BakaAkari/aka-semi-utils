@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PREVIEW_ASPECT_RATIOS, type PreviewAspectRatio } from '../v3Types';
 
 const SUPPORTED_EXTENSIONS = [
   'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'tif', 'tiff',
@@ -24,6 +25,8 @@ type ImagePresetRailProps<TConfig> = {
   onApplyPreset: (config: TConfig) => void;
   onReset: () => void;
   showToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  aspectRatio?: PreviewAspectRatio;
+  onAspectRatioChange?: (ratio: PreviewAspectRatio) => void;
 };
 
 /**
@@ -42,6 +45,8 @@ export function ImagePresetRail<TConfig>({
   onApplyPreset,
   onReset,
   showToast,
+  aspectRatio,
+  onAspectRatioChange,
 }: ImagePresetRailProps<TConfig>) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [, setUrlRevision] = useState(0);
@@ -137,6 +142,29 @@ export function ImagePresetRail<TConfig>({
           </div>
         </div>
       </div>
+
+      {files.length === 0 && onAspectRatioChange && (
+        <div className="rail-panel rail-panel-aspect">
+          <div className="rail-panel-header">
+            <span className="rail-panel-title">预览比例</span>
+          </div>
+          <div className="rail-panel-body">
+            <div className="aspect-ratio-grid">
+              {PREVIEW_ASPECT_RATIOS.map((ratio) => (
+                <button
+                  key={ratio.id}
+                  className={`aspect-ratio-btn ${aspectRatio === ratio.id ? 'active' : ''}`}
+                  onClick={() => onAspectRatioChange(ratio.id)}
+                  title={ratio.label}
+                >
+                  <span className="aspect-ratio-frame" style={{ aspectRatio: ratio.width / ratio.height }} />
+                  <span className="aspect-ratio-label">{ratio.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {files.length > 0 && (
         <div className="rail-panel rail-panel-thumbnails">

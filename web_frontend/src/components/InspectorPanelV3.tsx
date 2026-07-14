@@ -9,7 +9,6 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { uploadResourceV3 } from '../apiV3';
-import { V3MainControls } from './V3MainControls';
 import type {
   WatermarkConfigV3,
   RegionConfig,
@@ -23,10 +22,7 @@ import type {
   RegionType,
   FieldId,
 } from '../v3Types';
-import {
-  fieldOptionsV3,
-  defaultStyle,
-} from '../v3Types';
+import { fieldOptionsV3, defaultStyle } from '../v3Types';
 
 // ── 类型守卫 ────────────────────────────────────────────
 
@@ -111,22 +107,18 @@ export interface DiagnosticItem {
 // ── 主组件 ────────────────────────────────────────────
 
 export function InspectorPanelV3({ config, setConfig, diagnostics = [] }: InspectorPanelV3Props) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-
   const errors = diagnostics.filter((d) => d.severity === 'error');
   const warnings = diagnostics.filter((d) => d.severity === 'warning');
 
   return (
-    <section className="inspector inspector-v3" aria-label="水印设置">
+    <section className="inspector inspector-v3" aria-label="高级结构编辑">
       <div className="inspector-panel">
         <div className="inspector-tabs">
-          <span className="inspector-heading">水印设置</span>
+          <span className="inspector-heading">高级结构编辑</span>
         </div>
 
         <div className="inspector-body">
           <div className="v3-settings-content">
-            <V3MainControls />
-
             {/* Diagnostics summary */}
             {errors.length > 0 && (
               <div className="v3-diagnostics v3-diagnostics-error">
@@ -149,16 +141,7 @@ export function InspectorPanelV3({ config, setConfig, diagnostics = [] }: Inspec
               </div>
             )}
 
-            {/* Advanced toggle */}
-            <div className="v3-advanced-toggle">
-              <button className="small ghost" onClick={() => setAdvancedOpen((v) => !v)}>
-                {advancedOpen ? '收起高级设置' : '高级设置'}
-              </button>
-            </div>
-
-            {advancedOpen && (
-              <AdvancedStructureEditor config={config} setConfig={setConfig} diagnostics={diagnostics} />
-            )}
+            <AdvancedStructureEditor config={config} setConfig={setConfig} diagnostics={diagnostics} />
           </div>
         </div>
       </div>

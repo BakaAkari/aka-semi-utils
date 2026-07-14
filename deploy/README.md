@@ -40,12 +40,22 @@ rsync -avz --delete \
   --exclude='*.pyc' --exclude='.DS_Store' \
   --exclude='archive' --exclude='design' --exclude='docs' \
   --exclude='.pytest_cache' --exclude='.ruff_cache' --exclude='.mypy_cache' \
-  --exclude='build' --exclude='static' --exclude='gui' --exclude='config' \
+  --exclude='build' --exclude='static' --exclude='gui' \
   --exclude='aka-semi-utils-web-v2.env' \
   --rsync-path='sudo rsync' \
   ./ tencent-ubuntu:/opt/aka-semi-utils-web-v2/
+```
 
+注意：`config/logos/` 是 V3 自动 Logo 资源目录，保留在源码中并同步到线上，不要排除。如需排除 `config/` 中其他内容，请显式列出子目录。
+
+```bash
 ssh tencent-ubuntu "sudo chown -R www-data:www-data /opt/aka-semi-utils-web-v2/ && sudo chmod 755 /opt/aka-semi-utils-web-v2 && sudo systemctl restart watermark-v3.service"
+```
+
+重启后验证：
+
+```bash
+ssh tencent-ubuntu "systemctl is-active watermark-v3.service && curl -sS -o /dev/null -w 'api:%{http_code}\n' https://baka-akari.zone/tools/watermark-v3/api/health && curl -sS -o /dev/null -w 'logo:%{http_code}\n' https://baka-akari.zone/tools/watermark-v3/api/logos/default.png"
 ```
 
 ## V1 占位页部署

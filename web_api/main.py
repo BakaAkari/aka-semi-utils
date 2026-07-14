@@ -40,12 +40,17 @@ app = FastAPI(title="aka-semi-utils Web API", version="0.1.0")
 _job_slots = asyncio.Semaphore(max(1, settings.max_concurrent_jobs))
 _MAX_CONFIG_JSON_BYTES = 64 * 1024
 
-# Serve fonts as static files
-_fonts_dir = Path(__file__).parent.parent / "config" / "fonts"
+# Serve fonts and logos as static files from the source config directories
+_project_root = Path(__file__).parent.parent
+_fonts_dir = _project_root / "config" / "fonts"
 if _fonts_dir.exists():
     app.mount(f"{_api}/fonts", StaticFiles(directory=str(_fonts_dir)), name="fonts")
 
-# Frontend static files are served by Caddy; API only serves fonts and endpoints here.
+_logos_dir = _project_root / "config" / "logos"
+if _logos_dir.exists():
+    app.mount(f"{_api}/logos", StaticFiles(directory=str(_logos_dir)), name="logos")
+
+# Frontend static files are served by Caddy; API only serves fonts/logos and endpoints here.
 
 
 @app.exception_handler(ApiError)

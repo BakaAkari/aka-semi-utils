@@ -266,6 +266,7 @@ def _dict_to_watermark_config(data: dict) -> WatermarkConfig:
             return LogoContent(
                 path=d.get("path", ""),
                 color=d.get("color", "#D8D8D6"),
+                size_ratio=d.get("size_ratio", 0.6),
             )
         return None
 
@@ -284,6 +285,7 @@ def _dict_to_watermark_config(data: dict) -> WatermarkConfig:
             type=d.get("type", ""),
             enabled=d.get("enabled", False),
             slots={k: _slot(v) for k, v in (d.get("slots") or {}).items()},
+            height=d.get("height"),
             edge=d.get("edge"),
             width=d.get("width"),
             alignment=d.get("alignment", "start"),

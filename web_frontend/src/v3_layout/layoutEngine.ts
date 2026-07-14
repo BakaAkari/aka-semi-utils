@@ -62,8 +62,9 @@ export interface TextContent {
 }
 
 export interface LogoContent {
-  path: string;           // 空表示 auto
+  path: string;
   color: string;
+  size_ratio?: number;
 }
 
 export interface SignatureContent {
@@ -98,17 +99,16 @@ export interface RegionConfig {
   id: string;
   type: RegionType;
   enabled: boolean;
-  // footer-bar 特有
   slots?: Record<string, SlotConfig>;
-  // side-edge 特有
   edge?: 'left' | 'right';
   width?: { mode: 'pixel' | 'short_edge_ratio'; value: number };
   alignment?: 'start' | 'center' | 'end';
-  // free 特有
   anchor?: string;        // 九宫格锚点
   offset_x?: number;
   offset_y?: number;
   offset_unit?: 'pixel' | 'short_edge_ratio';
+  /** footer-bar 高度占图片短边的比例；由布局引擎解析为实际像素高度。 */
+  height?: number;
 }
 
 export interface WatermarkConfig {
@@ -158,6 +158,16 @@ export interface LayoutResultWithDiagnostics {
 export function computeLayout(config: WatermarkConfig, imageW: number, imageH: number): LayoutResult {
   // Step 1: 画布尺寸
   const margins = config.canvas.margins;
+  const shortEdge = Math.min(imageW, imageH);
+  const longEdge = Math.max(imageW, imageH);
+
+  // footer-bar 的 height 为占短边比例，在此解析为实际像素底部边距
+  for (const region of config.regions) {
+    if (region.enabled && region.type === 'footer-bar' && typeof region.height === 'number') {
+      margins.bottom = Math.max(20, Math.round(shortEdge * region.height));
+    }
+  }
+
   const canvasW = imageW + margins.left + margins.right;
   const canvasH = imageH + margins.top + margins.bottom;
 
@@ -165,8 +175,6 @@ export function computeLayout(config: WatermarkConfig, imageW: number, imageH: n
   const canvas = { w: canvasW, h: canvasH };
 
   const elements: ComputedElement[] = [];
-  const shortEdge = Math.min(imageW, imageH);
-  const longEdge = Math.max(imageW, imageH);
 
   // Step 2: 遍历区域
   for (const region of config.regions) {
@@ -238,7 +246,7 @@ function computeFooterBar(
         style: withFontSize(style, fontSize),
       });
     } else if (isLogoContent(slot.content)) {
-      const logoH = resolveLogoSize(slot.content, shortEdge);
+      const logoH = resolveLogoSize(slot.content, regionBounds.h);
       const pos = applyAnchor(slotBounds, 'middle-center');
       elements.push({
         id: `${region.id}-${slotId}`,
@@ -487,8 +495,10 @@ function resolveFontSize(
   return Math.max(8, Math.round(ref * ratio));
 }
 
-function resolveLogoSize(_content: LogoContent, shortEdge: number): number {
-  return Math.max(16, Math.round(shortEdge * 0.10));
+function resolveLogoSize(content: LogoContent, regionHeight: number): number {
+  // Logo 高度按所在区域高度的 size_ratio 缩放，默认占 60%，随底栏/水印条高度变化
+  const ratio = content.size_ratio ?? 0.6;
+  return Math.max(16, Math.round(regionHeight * ratio));
 }
 
 function mergeStyle(defaults: StyleConfig, override: StyleConfig | null): StyleConfig {

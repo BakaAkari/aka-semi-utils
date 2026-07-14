@@ -53,6 +53,7 @@ class TextContentPayload(StrictModel):
 class LogoContentPayload(StrictModel):
     path: ResourceId = Field(default="", max_length=128, pattern=_RESOURCE_ID_PATTERN)
     color: Color = "#D8D8D6"
+    size_ratio: float = Field(default=0.6, ge=0.0, le=1.0)
 
     @field_validator("color")
     @classmethod
@@ -105,6 +106,7 @@ class RegionConfigPayload(StrictModel):
     type: Literal["footer-bar", "side-edge", "free"]
     enabled: bool = True
     slots: dict[str, SlotConfigPayload] = Field(default_factory=dict, max_length=12)
+    height: float | None = Field(default=None, ge=0.0, le=1.0)
     edge: Literal["left", "right"] | None = None
     width: WidthPayload | None = None
     alignment: Literal["start", "center", "end"] | None = "start"
@@ -124,6 +126,9 @@ class RegionConfigPayload(StrictModel):
             invalid = {slot_id for slot_id in slot_ids if not _FREE_SLOT_RE.fullmatch(slot_id)}
         if invalid:
             raise ValueError(f"区域包含不支持的槽位: {', '.join(sorted(invalid))}")
+
+        if self.type != "footer-bar" and self.height is not None:
+            raise ValueError("height 只能用于 footer-bar 区域")
 
         if self.offset_unit == "short_edge_ratio" and (
             abs(self.offset_x) > 1.0 or abs(self.offset_y) > 1.0

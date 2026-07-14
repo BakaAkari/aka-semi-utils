@@ -1,10 +1,11 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { processImageV3, type ApiFile } from './apiV3';
-import { InspectorPanelV3 } from './components/InspectorPanelV3';
 import { TopBar } from './components/TopBar';
 import { V3LeftRail } from './components/V3LeftRail';
+import V3MainControls from './components/V3MainControls';
+import { V3RightRail } from './components/V3RightRail';
 import { WatermarkCanvasV3 } from './WatermarkCanvasV3';
-import { createDefaultWatermarkConfigV3, type WatermarkConfigV3 } from './v3Types';
+import { createDefaultWatermarkConfigV3, type WatermarkConfigV3, type PreviewAspectRatio } from './v3Types';
 import './styles.css';
 
 type ActionState = 'idle' | 'running' | 'success' | 'error';
@@ -57,6 +58,7 @@ export function V3HomePage() {
   const processingAbort = useRef<AbortController | null>(null);
   const [canvasImage, setCanvasImage] = useState<HTMLImageElement | null>(null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+  const [previewAspectRatio, setPreviewAspectRatio] = useState<PreviewAspectRatio>('3:2');
   const previewImageUrl = useRef<string | null>(null);
 
   // On file change: extract dimensions only
@@ -207,13 +209,14 @@ export function V3HomePage() {
       <div className="app-shell">
         <TopBar controller={contextValue} />
         <div className="workspace-v3">
-          <V3LeftRail />
+          <V3LeftRail aspectRatio={previewAspectRatio} onAspectRatioChange={setPreviewAspectRatio} />
           <main className="v3-main-workspace">
             <div className="canvas-area">
-              <WatermarkCanvasV3 config={config} image={canvasImage} imageSize={imageSize} />
+              <WatermarkCanvasV3 config={config} image={canvasImage} imageSize={imageSize} placeholderAspectRatio={previewAspectRatio} />
             </div>
-            <InspectorPanelV3 config={config} setConfig={setConfig} />
+            <V3MainControls config={config} onChange={setConfig} />
           </main>
+          <V3RightRail config={config} setConfig={setConfig} />
         </div>
         <div className="toast-container">
           {toasts.map(t => (

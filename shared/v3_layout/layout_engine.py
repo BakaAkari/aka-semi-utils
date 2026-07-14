@@ -83,6 +83,7 @@ class TextContent:
 class LogoContent:
     path: str = ""           # 空表示 auto
     color: str = "#D8D8D6"
+    size_ratio: float = 0.6  # logo 高度占所在区域高度的比例
 
 
 @dataclass(slots=True)
@@ -117,6 +118,7 @@ class RegionConfig:
     enabled: bool = False
     # footer-bar 特有
     slots: dict[str, SlotConfig] = field(default_factory=dict)
+    height: float | None = None  # 占图片短边的比例，由布局引擎解析为实际像素高度
     # side-edge 特有
     edge: Literal["left", "right"] | None = None
     width: dict[str, float | int] | None = None  # {"mode": "pixel"|"short_edge_ratio", "value": ...}
@@ -179,6 +181,14 @@ def compute_layout(config: WatermarkConfig, image_w: int, image_h: int) -> Layou
 
     # ── Step 1: 画布尺寸 ─────────────────────────────
     margins = config.canvas.margins
+    short_edge = min(image_w, image_h)
+    long_edge = max(image_w, image_h)
+
+    # footer-bar 的 height 为占短边比例，在此解析为实际像素底部边距
+    for region in config.regions:
+        if region.enabled and region.type == "footer-bar" and region.height is not None:
+            margins.bottom = max(20, round(short_edge * region.height))
+
     canvas_w = image_w + margins.left + margins.right
     canvas_h = image_h + margins.top + margins.bottom
 
@@ -186,10 +196,6 @@ def compute_layout(config: WatermarkConfig, image_w: int, image_h: int) -> Layou
     canvas = Size(w=canvas_w, h=canvas_h)
 
     elements: list[ComputedElement] = []
-    short_edge = min(image_w, image_h)
-    long_edge = max(image_w, image_h)
-
-    # ── Step 2: 遍历区域 ─────────────────────────────
     for region in config.regions:
         if not region.enabled:
             continue
@@ -336,7 +342,7 @@ def _compute_footer_bar(
             ))
 
         elif isinstance(slot.content, LogoContent):
-            logo_h = _resolve_logo_size(slot.content, short_edge)
+            logo_h = _resolve_logo_size(slot.content, region_bounds.h)
             pos = _apply_anchor(slot_bounds, "middle-center")
             elements.append(ComputedElement(
                 id=f"{region.id}-{slot_id}",
@@ -483,9 +489,9 @@ def _resolve_font_size(
     return max(8, round(ref * ratio))
 
 
-def _resolve_logo_size(content: LogoContent, short_edge: int) -> int:
-    """Logo 高度 = 短边比例（简化，实际可配置）。"""
-    return max(16, round(short_edge * 0.10))
+def _resolve_logo_size(content: LogoContent, region_height: int) -> int:
+    """Logo 高度 = 所在区域高度 * size_ratio，随底栏/水印条高度缩放。"""
+    return max(16, round(region_height * content.size_ratio))
 
 
 def _merge_style(defaults: StyleConfig, override: StyleConfig | None) -> StyleConfig:
