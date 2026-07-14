@@ -1,5 +1,8 @@
 # aka-semi-utils / V3 水印工具
 
+> **本仓库已归档。** 后续开发已迁移至 [BakaAkari/kari-imprint](https://github.com/BakaAkari/kari-imprint)。
+> 此处的 `v0.9.0-final` tag 是 aka-semi-utils 的最后一个版本，仅作为历史参考。
+
 公开 Web 摄影水印工具。当前主线是 **V3 Region-Based Layout**：用声明式 Region / Slot / Content 配置生成水印，前端 Canvas 与后端 PIL 共享同一套布局语义。
 
 旧版本状态：
