@@ -67,3 +67,4 @@ class WebApiSettings:
 
 
 settings = WebApiSettings.from_env()
+settings.ensure_dirs()
